@@ -47,7 +47,7 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
     Some(frame.start_address() + u64::from(addr.page_offset()))
 }
 
-pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     let level_4_table = active_level_4_table(physical_memory_offset);
 
     OffsetPageTable::new(level_4_table, physical_memory_offset)
@@ -105,4 +105,12 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
         self.next += 1;
         frame
     }
+}
+
+pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { init_page_table(phys_mem_offset) };
+    let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);
+
+    crate::allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 }

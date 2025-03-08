@@ -5,8 +5,9 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-extern crate alloc;
+pub use core::prelude::rust_2024::*;
 
+extern crate alloc;
 pub mod language_features;
 pub mod file;
 pub mod vga;
@@ -17,11 +18,14 @@ pub mod memory;
 pub mod allocator;
 pub mod task;
 pub mod ata;
+pub mod clk;
 
 use core::{panic::PanicInfo, prelude::rust_2024::*};
 
+use alloc::string::String;
 use bootloader::{entry_point, BootInfo};
 use memory::BootInfoFrameAllocator;
+use vga::Color;
 use x86_64::VirtAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,19 +74,33 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
+fn ok_message(message: &str) {
+    print!("[  ");
+    vga::write_str("OK", Color::Green, Color::Black);
+    print!("  ] {}\n", message);
+}
+
 pub fn init(boot_info: &'static BootInfo) {
     gdt::init();
+    ok_message("GDT initialized");
+
     interrupts::init_idt();
+    ok_message("IDT initialized");
+
     unsafe { interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
+    ok_message("Interrupts enabled");
 
-    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);
-
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    memory::init(boot_info);
+    ok_message("Memory initialized");
     
     ata::init();
+    ok_message("ATA initialized");
+
+    clk::pit::init();
+    ok_message("PIT initialized");
+
+    println!("rustnix: {}", clk::get_time());
 }
 
 pub fn hlt_loop() -> ! {

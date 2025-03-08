@@ -14,13 +14,6 @@ entry_point!(main);
 fn main(boot_info: &'static BootInfo) -> ! {
     rustnix::init(boot_info);
 
-    let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset);
-    let mut mapper = unsafe { rustnix::memory::init(phys_mem_offset) };
-    let mut frame_allocator = rustnix::memory::BootInfoFrameAllocator::init(&boot_info.memory_map);
-
-    rustnix::allocator::init_heap(&mut mapper, &mut frame_allocator)
-        .expect("heap initialization failed");
-
     test_main();
     loop {}
 }

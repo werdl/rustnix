@@ -9,7 +9,7 @@ use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 use bootloader::{BootInfo, entry_point};
 use core::panic::PanicInfo;
 use rustnix::{
-    allocator, ata, exit_qemu, memory::{self, BootInfoFrameAllocator}, print, println, serial_print, serial_println, task::{executor::Executor, keyboard, simple_executor::SimpleExecutor, Task}, QemuExitCode
+    allocator, ata, clk, exit_qemu, memory::{self, BootInfoFrameAllocator}, print, println, serial_print, serial_println, task::{executor::Executor, keyboard, simple_executor::SimpleExecutor, Task}, QemuExitCode
 };
 use x86_64::{VirtAddr, structures::paging::Page};
 
@@ -38,37 +38,32 @@ async fn example_task() {
 entry_point!(kmain);
 
 fn kmain(boot_info: &'static BootInfo) -> ! {
-    println!("Hello, World!");
-
-    rustnix::init(boot_info);
-
-
- 
+    rustnix::init(boot_info); 
 
     // let mut executor = Executor::new();
     // executor.spawn(Task::new(keyboard::print_keypresses()));
     // executor.run();
 
 
-    let mut buf = vec![0;512];
+    // let mut buf = vec![0;512];
     
-    ata::read(0, 1, 1, &mut buf);
+    // ata::read(0, 1, 1, &mut buf);
 
-    println!("Data read from sector 0: {:?}", buf);
+    // println!("Data read from sector 0: {:?}", buf);
 
-    // now write some data to the disk
-    let data = b"Hello from the other side!";
-    // puff up the data to 512 bytes
-    let mut data = data.to_vec();
-    data.resize(512, 0);
+    // // now write some data to the disk
+    // let data = b"Hello from the other side!";
+    // // puff up the data to 512 bytes
+    // let mut data = data.to_vec();
+    // data.resize(512, 0);
 
-    ata::write(0, 1, 1, &data);
+    // ata::write(0, 1, 1, &data);
 
-    // read the data back
-    let mut buffer = vec![0; 512];
-    ata::read(0, 1, 1, &mut buffer);
+    // // read the data back
+    // let mut buffer = vec![0; 512];
+    // ata::read(0, 1, 1, &mut buffer);
 
-    println!("Data read from sector 1: {:?}", buffer);
+    // println!("Data read from sector 1: {:?}", buffer);
     
 
     // print the data
@@ -76,8 +71,6 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
-
-    println!("It did not crash!");
 
     rustnix::hlt_loop()
 }

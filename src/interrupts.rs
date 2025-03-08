@@ -41,6 +41,13 @@ pub fn init_idt() {
     IDT.load();
 }
 
+pub fn set_irq_handler(irq: u8, handler: fn()) {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut handlers = IRQ_HANDLERS.lock();
+        handlers[irq as usize] = handler;
+    });
+}
+
 
 macro_rules! irq_handler {
     ($handler:ident, $irq:expr) => {

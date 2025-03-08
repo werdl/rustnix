@@ -7,6 +7,9 @@ pub trait File {
     /// Write from the buffer into the file
     fn write(&mut self, buf: &[u8]) -> usize;
 
-    /// Seek to a position in the file
-    fn seek(&mut self, pos: usize) -> usize;
+    /// close the file
+    fn close(&mut self);
+
+    /// poll the file
+    fn poll(&mut self) -> bool;
 }

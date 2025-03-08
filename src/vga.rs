@@ -6,6 +6,7 @@ use core::fmt;
 use volatile::Volatile;
 use lazy_static::lazy_static;
 use spin::Mutex;
+use x86_64::instructions::interrupts;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +128,24 @@ impl fmt::Write for VgaWriter {
         self.write_str(s);
         Ok(())
     }
+}
+
+pub fn write_char(c: char, fg: Color, bg: Color) {
+    interrupts::without_interrupts(|| {
+        let mut writer = VGA_WRITER.lock();
+        let old_color = writer.color_code;
+        writer.color_code = ColorCode::new(fg, bg);
+        writer.write_byte(c as u8);
+        writer.color_code = old_color;
+    });
+}
+
+pub fn write_str(s: &str, fg: Color, bg: Color) {
+    interrupts::without_interrupts(|| {
+        for c in s.chars() {
+            write_char(c, fg, bg);
+        }
+    });
 }
 
 lazy_static! {
