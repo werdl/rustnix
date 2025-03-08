@@ -1,1 +1,5 @@
 /target
+*.bin
+build_and_run.sh
+*.iso
+*.img

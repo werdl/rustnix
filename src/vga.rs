@@ -136,16 +136,48 @@ lazy_static! {
 #[doc(hidden)] // needs to be public for the print! macro, but shouldn't be used directly
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    VGA_WRITER.lock().write_fmt(args).unwrap();
+    use x86_64::instructions::interrupts;
+
+    interrupts::without_interrupts(|| {
+        VGA_WRITER.lock().write_fmt(args).unwrap();
+    });
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ($crate::vga::_print(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::vga::_print(core::format_args!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::print!("{}\n", core::format_args!($($arg)*)));
+}
+
+#[test_case]
+fn test_single_println() {
+    println!("test_println_simple output");
+}
+
+#[test_case]
+fn test_many_println() {
+    for _ in 0..200 {
+        println!("test_println_many output");
+    }
+}
+
+#[test_case]
+fn test_println_output() {
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
+
+    let s = "Hello world! Enjoy some numbers: 42 ";
+    interrupts::without_interrupts(|| {
+        let mut writer = VGA_WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buf.chars[BUF_HEIGHT - 2][i].read();
+            assert_eq!(char::from(screen_char.ascii_char), c);
+        }
+    });
 }
