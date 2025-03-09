@@ -1,5 +1,10 @@
 # rustnix
 > another useless toy Unix clone
+
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/werdl/rustnix/test.yml)
+![GitHub last commit](https://img.shields.io/github/last-commit/werdl/rustnix)
+![GitHub top language](https://img.shields.io/github/languages/top/werdl/rustnix)
+
 ## Thanks
 ### Code
 - for the initial stages of this project, I followed [https://os.phil-opp.com/](https://os.phil-opp.com/)
