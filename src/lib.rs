@@ -138,6 +138,9 @@ pub fn init_logger() {
 
 
 pub fn init(boot_info: &'static BootInfo) {
+    print!("[ ");
+    vga::write_str("INFO", Color::LightBlue, Color::Black);
+    print!(" ] Initializing memory...\n");
     memory::init(boot_info);
     init_logger();
     info!("Logger initialized");

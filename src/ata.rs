@@ -7,7 +7,7 @@
 use alloc::{borrow::ToOwned, string::String};
 use alloc::vec::Vec;
 use bit_field::BitField;
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 use core::convert::TryInto;
 use core::fmt;
 use core::hint::spin_loop;
@@ -209,7 +209,7 @@ impl Bus {
             return Err(());
         }
         if self.is_error() {
-            error!("ATA {:?} command errored", cmd);
+            warn!("ATA {:?} command errored", cmd);
             self.debug();
             return Err(());
         }
