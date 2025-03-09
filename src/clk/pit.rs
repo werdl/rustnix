@@ -12,7 +12,7 @@ use x86_64::instructions::interrupts as x86_interrupts;
 // between ticks to improve time measurements accuracy.
 const PIT_FREQUENCY: f64 = 3_579_545.0 / 3.0; // 1_193_181.666 Hz
 const PIT_DIVIDER: u16 = 1193;
-const PIT_INTERVAL: f64 = (PIT_DIVIDER as f64) / PIT_FREQUENCY;
+pub const PIT_INTERVAL: f64 = (PIT_DIVIDER as f64) / PIT_FREQUENCY;
 
 static PIT_TICKS: AtomicUsize = AtomicUsize::new(0);
 static TSC_FREQUENCY: AtomicU64 = AtomicU64::new(0);

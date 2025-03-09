@@ -13,7 +13,7 @@ use core::hint::spin_loop;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::println;
+use crate::{clk, println};
 
 // Information Technology
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)
@@ -137,18 +137,19 @@ impl Bus {
         self.status().get_bit(Status::ERR as usize)
     }
     fn poll(&mut self, bit: Status, val: bool) -> Result<(), ()> {
-        for _ in 0..1_000_000 {
-            if self.status().get_bit(bit as usize) == val {
-                return Ok(());
+        let start = clk::get_time_since_boot();
+        while self.status().get_bit(bit as usize) != val {
+            if clk::get_time_since_boot() - start > 1.0 {
+                println!(
+                    "ATA hanged while polling {:?} bit in status register",
+                    bit
+                );
+                self.debug();
+                return Err(());
             }
             spin_loop();
         }
-        println!(
-            "ATA hanged while polling {:?} bit in status register",
-            bit
-        );
-        self.debug();
-        Err(())
+        Ok(())
     }
 
     fn select_drive(&mut self, drive: u8) -> Result<(), ()> {
@@ -169,10 +170,8 @@ impl Bus {
             self.drive_register.write(0xA0 | (drive << 4))
         }
 
-        // wait at least 400 ns by spinning around for a bit
-        for _ in 0..100 {
-            spin_loop();
-        }
+        // wait at least 400 ns
+        self.wait(400);
 
         self.poll(Status::BSY, false)?;
         self.poll(Status::DRQ, false)?;

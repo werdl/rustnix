@@ -9,8 +9,9 @@ use crate::println;
 pub mod pit;
 pub mod rtc;
 
-lazy_static! {
-    static ref BOOT_TIME: u64 = get_unix_time();
+// return the time since boot in seconds
+pub fn get_time_since_boot() -> f64 {
+    pit::get_ticks() as f64 * pit::PIT_INTERVAL
 }
 
 // Get the current time from the RTC

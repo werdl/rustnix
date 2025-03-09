@@ -19,6 +19,7 @@ pub mod allocator;
 pub mod task;
 pub mod ata;
 pub mod clk;
+pub mod fs;
 
 use core::{panic::PanicInfo, prelude::rust_2024::*};
 
@@ -100,7 +101,9 @@ pub fn init(boot_info: &'static BootInfo) {
     clk::pit::init();
     ok_message("PIT initialized");
 
-    println!("rustnix: {}", clk::get_time());
+    print!("[   ");
+    vga::write_str("RUSTNIX", Color::LightRed, Color::Black);
+    print!("    ] Kernel initialized\n");
 }
 
 pub fn hlt_loop() -> ! {
