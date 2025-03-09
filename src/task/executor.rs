@@ -1,9 +1,8 @@
 use super::{Task, TaskId};
-use alloc::string::ToString;
 use alloc::task::Wake;
 use alloc::{collections::BTreeMap, sync::Arc};
 use core::task::{Context, Poll};
-use core::task::{RawWaker, RawWakerVTable, Waker};
+use core::task::Waker;
 use crossbeam_queue::ArrayQueue;
 
 pub struct Executor {

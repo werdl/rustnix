@@ -2,9 +2,6 @@ use alloc::{
     string::String,
     format
 };
-use lazy_static::lazy_static;
-
-use crate::println;
 
 pub mod pit;
 pub mod rtc;

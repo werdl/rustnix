@@ -6,7 +6,6 @@
  * - the size of the data blocks
  * - the number of inodes
  * - the number of data blocks
- * - the number of inodes per block
  *
  * the superblock is followed by the inode table, which contains the following information:
  * - the size of the file
@@ -23,15 +22,22 @@
  * Note that directories are just a figment of the filesystem's imagination; they are not implemented in this filesystem, rather being abstracted away by the virtal FS and the filenames. They cannot have properties like size, creation time, and can never be empty.
  */
 
-use core::num;
+use lazy_static::lazy_static;
+use spin::Mutex;
 
 use crate::{
-    ata::{BLOCK_SIZE, read, write},
+    ata::{read, write, BLOCK_SIZE},
     clk,
-    file::File,
-    println,
+    file::{File, FileError, FileSystem},
 };
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, string::{String, ToString}, vec, vec::Vec};
+use hashbrown::HashMap;
+
+pub const MAGIC_NUMER: u64 = 0x42371337;
+
+lazy_static! {
+    static ref FILESYSTEMS: Mutex<HashMap<(usize, usize), VirtFs>> = Mutex::new(HashMap::new());
+}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -42,7 +48,6 @@ struct Superblock {
     data_block_size: u64,
     num_inodes: u64,
     num_data_blocks: u64,
-    inodes_per_block: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -63,7 +68,7 @@ pub struct DataBlock {
     pub data: [u8; 512],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct FileMetadata {
     owner: u64,
@@ -73,6 +78,7 @@ pub struct FileMetadata {
     permissions: u64, // Unix-style
 }
 
+#[derive(Debug, Clone)]
 pub struct PhysFs {
     superblock: Superblock,
     inode_table: Vec<Inode>,
@@ -100,6 +106,26 @@ pub enum FsError {
     InvalidMetadata,
     WriteError,
     ReadError,
+}
+
+impl ToString for FsError {
+    fn to_string(&self) -> String {
+        match self {
+            FsError::InvalidPath => "Invalid path".to_string(),
+            FsError::FileNotFound => "File not found".to_string(),
+            FsError::FileExists => "File already exists".to_string(),
+            FsError::DiskFull => "Disk is full".to_string(),
+            FsError::OutOfInodes => "Out of inodes".to_string(),
+            FsError::OutOfDataBlocks => "Out of data blocks".to_string(),
+            FsError::InvalidInode => "Invalid inode".to_string(),
+            FsError::InvalidDataBlock => "Invalid data block".to_string(),
+            FsError::InvalidSuperblock => "Invalid superblock".to_string(),
+            FsError::InvalidInodeTable => "Invalid inode table".to_string(),
+            FsError::InvalidMetadata => "Invalid metadata".to_string(),
+            FsError::WriteError => "Write error".to_string(),
+            FsError::ReadError => "Read error".to_string(),
+        }
+    }
 }
 
 impl PhysFs {
@@ -138,12 +164,11 @@ impl PhysFs {
                     .try_into()
                     .map_err(|_| FsError::InvalidSuperblock)?,
             ),
-            inodes_per_block: u64::from_le_bytes(
-                sector_data[48..56]
-                    .try_into()
-                    .map_err(|_| FsError::InvalidSuperblock)?,
-            ),
         };
+
+        if superblock.magic_number != MAGIC_NUMER {
+            return Err(FsError::InvalidSuperblock);
+        }
 
         // read the inode table from the disk
         let mut inode_table = vec![
@@ -275,7 +300,7 @@ impl PhysFs {
         })
     }
 
-    pub fn write_to_disk(&self, bus: usize, device: usize) -> Result<(), FsError> {
+    fn write_to_disk(&self, bus: usize, device: usize) -> Result<(), FsError> {
         // write the superblock to the disk
         let mut sector_data = vec![0; BLOCK_SIZE];
         sector_data[0..8].copy_from_slice(&self.superblock.magic_number.to_le_bytes());
@@ -284,7 +309,6 @@ impl PhysFs {
         sector_data[24..32].copy_from_slice(&self.superblock.data_block_size.to_le_bytes());
         sector_data[32..40].copy_from_slice(&self.superblock.num_inodes.to_le_bytes());
         sector_data[40..48].copy_from_slice(&self.superblock.num_data_blocks.to_le_bytes());
-        sector_data[48..56].copy_from_slice(&self.superblock.inodes_per_block.to_le_bytes());
         write(bus as u8, device as u8, 0, &sector_data).map_err(|_| FsError::WriteError)?;
 
         // write the inode table to the disk
@@ -381,7 +405,7 @@ impl PhysFs {
         Ok(())
     }
 
-    pub fn create_file(
+    fn create_file(
         &mut self,
         file_name: &str,
         perms: [u8; 3],
@@ -422,13 +446,8 @@ impl PhysFs {
         Ok(())
     }
 
-    pub fn read_file(&self, file_name: &str) -> Result<(Vec<u8>, FileMetadata), FsError> {
+    fn read_file(&self, file_name: &str) -> Result<(Vec<u8>, FileMetadata), FsError> {
         let inode = self.find_inode_by_name(file_name)?;
-
-        println!(
-            "inode.data_block_pointers[0]: {:?}",
-            inode.data_block_pointers
-        );
 
         // the first data block contains the metadata
         let metadata_block = &self.data_blocks[inode.data_block_pointers[0] as usize].data;
@@ -484,7 +503,7 @@ impl PhysFs {
             .ok_or(FsError::FileNotFound)
     }
 
-    pub fn write_file(
+    fn write_file(
         &mut self,
         file_name: &str,
         data: &[u8],
@@ -595,34 +614,571 @@ impl PhysFs {
     }
 }
 
-pub fn create_dummy_fs() -> PhysFs {
-    let superblock = Superblock {
-        magic_number: 0xdeadbeef,
-        disk_size: 1024 * 1024, // 1 MB
-        inode_table_size: 256,
-        data_block_size: 512,
-        num_inodes: 1024,
-        num_data_blocks: 1024,
-        inodes_per_block: 4,
+/// the exposed API for the filesystem, which implements File
+#[derive(Debug, Clone)]
+pub struct VirtFs {
+    phys_fs: PhysFs,
+    bus: usize,
+    device: usize,
+
+    open_files: Vec<FileHandle>,
+}
+
+impl VirtFs {
+    /// load the filesystem from a disk
+    pub fn from_disk(bus: usize, device: usize) -> Result<(), FsError> {
+        let phys_fs = PhysFs::read_from_disk(bus, device)?;
+
+        let mut file_systems = FILESYSTEMS.lock();
+        file_systems.insert((bus, device), VirtFs {
+            phys_fs,
+            bus,
+            device,
+            open_files: Vec::new(),
+        });
+
+        Ok(())
+    }
+
+    /// create a new filesystem with a given size, on a given bus and device (note that this call will NOT format the disk, instead the first flush call will)
+    pub fn new(bus: usize, device: usize, disk_size: u64) {
+        let mut file_systems = FILESYSTEMS.lock();
+        file_systems.insert((bus, device), 
+        VirtFs {
+            phys_fs: PhysFs {
+                superblock: Superblock {
+                    magic_number: MAGIC_NUMER,
+                    disk_size,
+                    inode_table_size: 1024,
+                    data_block_size: 512,
+                    num_inodes: 1024,
+                    num_data_blocks: (disk_size / 512) - 1024 - 1, // superblock + inode table
+                },
+                inode_table: vec![
+                    Inode {
+                        num_data_blocks: 0,
+                        data_block_pointers: [0; 12],
+                        single_indirect_block_pointer: 0,
+                        double_indirect_block_pointer: 0,
+                        triple_indirect_block_pointer: 0,
+                        file_name: [0; 384],
+                    };
+                    1024
+                ],
+                data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+            },
+            bus: bus,
+            device: device,
+            open_files: Vec::new(),
+        });
+    }
+}
+
+impl From<FsError> for FileError {
+    fn from(fs_error: FsError) -> Self {
+        match fs_error {
+            FsError::InvalidPath => FileError::PermissionError(fs_error.to_string()),
+            FsError::FileNotFound => FileError::NotFoundError(fs_error.to_string()),
+            FsError::FileExists => FileError::WriteError(fs_error.to_string()),
+            FsError::DiskFull => FileError::WriteError(fs_error.to_string()),
+            FsError::OutOfInodes => FileError::WriteError(fs_error.to_string()),
+            FsError::OutOfDataBlocks => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidInode => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidDataBlock => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidSuperblock => FileError::ReadError(fs_error.to_string()),
+            FsError::InvalidInodeTable => FileError::ReadError(fs_error.to_string()),
+            FsError::InvalidMetadata => FileError::ReadError(fs_error.to_string()),
+            FsError::WriteError => FileError::WriteError(fs_error.to_string()),
+            FsError::ReadError => FileError::ReadError(fs_error.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FileHandle {
+    file_name: String,
+    bus: usize,
+    device: usize,
+}
+
+impl File for FileHandle {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
+        buf.copy_from_slice(&data);
+        Ok(data.len())
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        fs.phys_fs.write_file(&self.file_name, buf, None, None)?;
+        Ok(buf.len())
+    }
+
+    fn close(&mut self, _path: Option<&str>) -> Result<(), FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        fs.open_files.retain(|f| f.file_name != self.file_name);
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<(), FileError> {
+        let file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        fs.phys_fs.write_to_disk(fs.bus, fs.device)?;
+        Ok(())
+    }
+}
+
+impl FileSystem for VirtFs {
+    fn open(&mut self, path: &str) -> Result<Box<dyn File>, FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let (_data, _) = fs.phys_fs.read_file(path)?;
+        let file_handle = FileHandle {
+            file_name: path.to_string(),
+            bus: self.bus,
+            device: self.device,
+        };
+        Ok(Box::new(file_handle))
+    }
+
+    fn create(&mut self, path: &str, owner: u64, perms: [u8;3]) -> Result<Box<dyn File>, FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        fs.phys_fs.create_file(path, perms, owner)?;
+        let file_handle = FileHandle {
+            file_name: path.to_string(),
+            bus: self.bus,
+            device: self.device,
+        };
+        Ok(Box::new(file_handle))
+    }
+
+    fn delete(&mut self, path: &str) -> Result<(), FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let inode = fs.phys_fs.find_inode_by_name(path)?;
+        for i in 0..inode.num_data_blocks {
+            fs.phys_fs.data_blocks[inode.data_block_pointers[i as usize] as usize] = DataBlock { data: [0; 512] };
+        }
+        fs.phys_fs.inode_table.retain(|i| i.file_name != inode.file_name);
+        Ok(())
+    }
+
+    fn exists(&mut self, path: &str) -> bool {
+        let file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get(&(self.bus, self.device)).unwrap();
+        fs.phys_fs.find_inode_by_name(path).is_ok()
+    }
+
+    fn chmod(&mut self, path: &str, perms: [u8;3]) -> Result<(), FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let inode = fs.phys_fs.find_inode_by_name(path)?;
+        let mut updated_inode = inode.clone();
+        updated_inode.file_name = inode.file_name;
+        updated_inode.num_data_blocks = inode.num_data_blocks;
+        updated_inode.data_block_pointers = inode.data_block_pointers;
+        updated_inode.single_indirect_block_pointer = inode.single_indirect_block_pointer;
+        updated_inode.double_indirect_block_pointer = inode.double_indirect_block_pointer;
+        updated_inode.triple_indirect_block_pointer = inode.triple_indirect_block_pointer;
+
+        let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
+        let mut metadata = FileMetadata {
+            owner: u64::from_le_bytes(
+                metadata_block[..8]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            creation_time: u64::from_le_bytes(
+                metadata_block[8..16]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            modification_time: u64::from_le_bytes(
+                metadata_block[16..24]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            access_time: u64::from_le_bytes(
+                metadata_block[24..32]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            permissions: u64::from_le_bytes(
+                metadata_block[32..40]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+        };
+
+        metadata.permissions = u64::from_le_bytes([perms[0], perms[1], perms[2], 0, 0, 0, 0, 0]);
+
+        let mut metadata_block = vec![0u8; 512];
+        metadata_block[..8].copy_from_slice(&metadata.owner.to_le_bytes());
+        metadata_block[8..16].copy_from_slice(&metadata.creation_time.to_le_bytes());
+        metadata_block[16..24].copy_from_slice(&metadata.modification_time.to_le_bytes());
+        metadata_block[24..32].copy_from_slice(&metadata.access_time.to_le_bytes());
+        metadata_block[32..40].copy_from_slice(&metadata.permissions.to_le_bytes());
+
+        fs.phys_fs.write_to_data_block(inode.data_block_pointers[0], &metadata_block)?;
+        fs.phys_fs.update_inode(updated_inode)?;
+        Ok(())
+    }
+
+    fn chown(&mut self, path: &str, owner: u64) -> Result<(), FileError> {
+        let mut file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get_mut(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let inode = fs.phys_fs.find_inode_by_name(path)?;
+        let mut updated_inode = inode.clone();
+        updated_inode.file_name = inode.file_name;
+        updated_inode.num_data_blocks = inode.num_data_blocks;
+        updated_inode.data_block_pointers = inode.data_block_pointers;
+        updated_inode.single_indirect_block_pointer = inode.single_indirect_block_pointer;
+        updated_inode.double_indirect_block_pointer = inode.double_indirect_block_pointer;
+        updated_inode.triple_indirect_block_pointer = inode.triple_indirect_block_pointer;
+
+        let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
+        let mut metadata = FileMetadata {
+            owner: u64::from_le_bytes(
+                metadata_block[..8]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            creation_time: u64::from_le_bytes(
+                metadata_block[8..16]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            modification_time: u64::from_le_bytes(
+                metadata_block[16..24]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            access_time: u64::from_le_bytes(
+                metadata_block[24..32]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            permissions: u64::from_le_bytes(
+                metadata_block[32..40]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+        };
+
+        metadata.owner = owner;
+
+        let mut metadata_block = vec![0u8; 512];
+        metadata_block[..8].copy_from_slice(&metadata.owner.to_le_bytes());
+        metadata_block[8..16].copy_from_slice(&metadata.creation_time.to_le_bytes());
+        metadata_block[16..24].copy_from_slice(&metadata.modification_time.to_le_bytes());
+        metadata_block[24..32].copy_from_slice(&metadata.access_time.to_le_bytes());
+        metadata_block[32..40].copy_from_slice(&metadata.permissions.to_le_bytes());
+
+        fs.phys_fs.write_to_data_block(inode.data_block_pointers[0], &metadata_block)?;
+        fs.phys_fs.update_inode(updated_inode)?;
+        
+        Ok(())
+    }
+
+    fn get_owner(&mut self, path: &str) -> Result<u64, FileError> {
+        let file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let inode = fs.phys_fs.find_inode_by_name(path)?;
+        let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
+        let metadata = FileMetadata {
+            owner: u64::from_le_bytes(
+                metadata_block[..8]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            creation_time: u64::from_le_bytes(
+                metadata_block[8..16]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            modification_time: u64::from_le_bytes(
+                metadata_block[16..24]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            access_time: u64::from_le_bytes(
+                metadata_block[24..32]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            permissions: u64::from_le_bytes(
+                metadata_block[32..40]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+        };
+        Ok(metadata.owner)
+    }
+
+    fn get_perms(&mut self, path: &str) -> Result<[u8;3], FileError> {
+        let file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let inode = fs.phys_fs.find_inode_by_name(path)?;
+        let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
+        let metadata = FileMetadata {
+            owner: u64::from_le_bytes(
+                metadata_block[..8]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            creation_time: u64::from_le_bytes(
+                metadata_block[8..16]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            modification_time: u64::from_le_bytes(
+                metadata_block[16..24]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            access_time: u64::from_le_bytes(
+                metadata_block[24..32]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+            permissions: u64::from_le_bytes(
+                metadata_block[32..40]
+                    .try_into()
+                    .map_err(|_| FsError::InvalidMetadata)?,
+            ),
+        };
+
+        // perms will never be more than 3 bytes
+        Ok(metadata.permissions.to_le_bytes()[0..3].try_into().unwrap())
+    }
+    
+    fn list(&mut self, path: &str) -> Result<Vec<String>, FileError> {
+        let file_systems = FILESYSTEMS.lock();
+        let fs = file_systems.get(&(self.bus, self.device)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+        let mut files = Vec::new();
+        for inode in fs.phys_fs.inode_table.iter() {
+            let file_name = String::from_utf8(inode.file_name.to_vec()).unwrap();
+            if file_name.starts_with(path) {
+                files.push(file_name);
+            }
+        }
+        Ok(files)
+    }
+}
+
+pub fn get_fs(bus: usize, device: usize) -> Result<Box<dyn FileSystem>, FileError> {
+    let file_systems = FILESYSTEMS.lock();
+    if let Some(fs) = file_systems.get(&(bus, device)) {
+        Ok(Box::new(fs.clone()))
+    } else {
+        Err(FileError::NotFoundError("Filesystem not found".to_string()))
+    }
+}
+
+#[test_case]
+fn test_create_file() {
+    let mut fs = VirtFs {
+        phys_fs: PhysFs {
+            superblock: Superblock {
+                magic_number: MAGIC_NUMER,
+                disk_size: 1024,
+                inode_table_size: 1024,
+                data_block_size: 512,
+                num_inodes: 1024,
+                num_data_blocks: 1024,
+            },
+            inode_table: vec![
+                Inode {
+                    num_data_blocks: 0,
+                    data_block_pointers: [0; 12],
+                    single_indirect_block_pointer: 0,
+                    double_indirect_block_pointer: 0,
+                    triple_indirect_block_pointer: 0,
+                    file_name: [0; 384],
+                };
+                1024
+            ],
+            data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        },
+        bus: 0,
+        device: 0,
+        open_files: Vec::new(),
     };
 
-    let inode_table = vec![
-        Inode {
-            num_data_blocks: 0,
-            data_block_pointers: [0; 12],
-            single_indirect_block_pointer: 0,
-            double_indirect_block_pointer: 0,
-            triple_indirect_block_pointer: 0,
-            file_name: [0; 384],
-        };
-        superblock.num_inodes as usize
-    ];
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    let data_blocks = vec![DataBlock { data: [0; 512] }; superblock.num_data_blocks as usize];
+    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    assert!(fs.exists("test.txt"));
 
-    PhysFs {
-        superblock,
-        inode_table,
-        data_blocks,
-    }
+    FILESYSTEMS.lock().remove(&(0, 0));
+}
+
+#[test_case]
+fn test_write_file() {
+    let mut fs = VirtFs {
+        phys_fs: PhysFs {
+            superblock: Superblock {
+                magic_number: MAGIC_NUMER,
+                disk_size: 1024,
+                inode_table_size: 1024,
+                data_block_size: 512,
+                num_inodes: 1024,
+                num_data_blocks: 1024,
+            },
+            inode_table: vec![
+                Inode {
+                    num_data_blocks: 0,
+                    data_block_pointers: [0; 12],
+                    single_indirect_block_pointer: 0,
+                    double_indirect_block_pointer: 0,
+                    triple_indirect_block_pointer: 0,
+                    file_name: [0; 384],
+                };
+                1024
+            ],
+            data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        },
+        bus: 0,
+        device: 0,
+        open_files: Vec::new(),
+    };
+
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+
+    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    
+    let data = b"Hello, world!";
+    fs.open("test.txt").expect("Failed to open file").write(data).expect("Failed to write to file");
+
+    let mut buf = [0; 512];
+    fs.open("test.txt").expect("Failed to open file").read(&mut buf).expect("Failed to read from file");
+
+    assert_eq!(&buf[..data.len()], data);
+
+    FILESYSTEMS.lock().remove(&(0, 0));
+}
+
+#[test_case]
+fn test_chmod_file() {
+    let mut fs = VirtFs {
+        phys_fs: PhysFs {
+            superblock: Superblock {
+                magic_number: MAGIC_NUMER,
+                disk_size: 1024,
+                inode_table_size: 1024,
+                data_block_size: 512,
+                num_inodes: 1024,
+                num_data_blocks: 1024,
+            },
+            inode_table: vec![
+                Inode {
+                    num_data_blocks: 0,
+                    data_block_pointers: [0; 12],
+                    single_indirect_block_pointer: 0,
+                    double_indirect_block_pointer: 0,
+                    triple_indirect_block_pointer: 0,
+                    file_name: [0; 384],
+                };
+                1024
+            ],
+            data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        },
+        bus: 0,
+        device: 0,
+        open_files: Vec::new(),
+    };
+
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+
+    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    
+    fs.chmod("test.txt", [1, 1, 1]).unwrap();
+    let perms = fs.get_perms("test.txt").unwrap();
+    assert_eq!(perms, [1, 1, 1]);
+}
+
+#[test_case]
+fn test_chown_file() {
+    let mut fs = VirtFs {
+        phys_fs: PhysFs {
+            superblock: Superblock {
+                magic_number: MAGIC_NUMER,
+                disk_size: 1024,
+                inode_table_size: 1024,
+                data_block_size: 512,
+                num_inodes: 1024,
+                num_data_blocks: 1024,
+            },
+            inode_table: vec![
+                Inode {
+                    num_data_blocks: 0,
+                    data_block_pointers: [0; 12],
+                    single_indirect_block_pointer: 0,
+                    double_indirect_block_pointer: 0,
+                    triple_indirect_block_pointer: 0,
+                    file_name: [0; 384],
+                };
+                1024
+            ],
+            data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        },
+        bus: 0,
+        device: 0,
+        open_files: Vec::new(),
+    };
+
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+
+    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    
+    fs.chown("test.txt", 1).unwrap();
+    let owner = fs.get_owner("test.txt").unwrap();
+    assert_eq!(owner, 1);
+
+    FILESYSTEMS.lock().remove(&(0, 0));
+}
+
+#[test_case]
+fn test_delete_file() {
+    let mut fs = VirtFs {
+        phys_fs: PhysFs {
+            superblock: Superblock {
+                magic_number: MAGIC_NUMER,
+                disk_size: 1024,
+                inode_table_size: 1024,
+                data_block_size: 512,
+                num_inodes: 1024,
+                num_data_blocks: 1024,
+            },
+            inode_table: vec![
+                Inode {
+                    num_data_blocks: 0,
+                    data_block_pointers: [0; 12],
+                    single_indirect_block_pointer: 0,
+                    double_indirect_block_pointer: 0,
+                    triple_indirect_block_pointer: 0,
+                    file_name: [0; 384],
+                };
+                1024
+            ],
+            data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        },
+        bus: 0,
+        device: 0,
+        open_files: Vec::new(),
+    };
+
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+
+    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    
+    fs.delete("test.txt").unwrap();
+    assert_eq!(fs.exists("test.txt"), false);
+
+    FILESYSTEMS.lock().remove(&(0, 0));
 }

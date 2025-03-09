@@ -8,7 +8,7 @@ unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut
     let virt = physical_memory_offset + phys.as_u64();
     let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
 
-    &mut *page_table_ptr // unsafe bit
+    unsafe { &mut *page_table_ptr } // unsafe bit
 }
 
 pub unsafe fn translate_addr(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Option<PhysAddr> {
@@ -48,12 +48,12 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
 }
 
 unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
-    let level_4_table = active_level_4_table(physical_memory_offset);
+    let level_4_table = unsafe { active_level_4_table(physical_memory_offset) };
 
-    OffsetPageTable::new(level_4_table, physical_memory_offset)
+    unsafe { OffsetPageTable::new(level_4_table, physical_memory_offset) }
 }
 
-use x86_64::structures::paging::{Page, PhysFrame, Mapper, Size4KiB, FrameAllocator};
+use x86_64::structures::paging::{Page, PhysFrame, Size4KiB, FrameAllocator};
 
 pub fn create_example_mapping(
     page: Page,

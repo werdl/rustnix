@@ -8,7 +8,6 @@
 pub use core::prelude::rust_2024::*;
 
 extern crate alloc;
-pub mod language_features;
 pub mod file;
 pub mod vga;
 pub mod serial;
@@ -21,13 +20,11 @@ pub mod ata;
 pub mod clk;
 pub mod fs;
 
-use core::{panic::PanicInfo, prelude::rust_2024::*};
+use core::panic::PanicInfo;
 
-use alloc::string::String;
+#[allow(unused_imports)]
 use bootloader::{entry_point, BootInfo};
-use memory::BootInfoFrameAllocator;
 use vga::Color;
-use x86_64::VirtAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -75,35 +72,97 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-fn ok_message(message: &str) {
-    print!("[  ");
-    vga::write_str("OK", Color::Green, Color::Black);
-    print!("  ] {}\n", message);
+use log::{info, Level, Metadata, Record};
+use alloc::format;
+
+// Example: A custom logger that writes logs to a serial port.
+pub struct SerialLogger;
+
+impl log::Log for SerialLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        // You can filter logs based on level
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            let level = record.level();
+            let args = record.args();
+            let message = format!("{}", args);
+
+            // Here you would send the message to a serial port or some output
+            // For example, `serial_write(message.as_bytes())`
+
+            print!("[ ");
+
+            match level {
+                Level::Error => {
+                    vga::write_str("ERROR", Color::LightRed, Color::Black);
+                }
+                Level::Warn => {
+                    vga::write_str("WARN", Color::Yellow, Color::Black);
+                }
+                Level::Info => {
+                    vga::write_str("INFO", Color::LightBlue, Color::Black);
+                }
+                Level::Debug => {
+                    vga::write_str("DEBUG", Color::LightGreen, Color::Black);
+                }
+                Level::Trace => {
+                    vga::write_str("TRACE", Color::LightCyan, Color::Black);
+                }
+            }
+
+            match level {
+                Level::Warn | Level::Info => {
+                    print!(" ");
+                }
+                _ => {}
+            }
+
+            print!("] {}\n", message);
+
+        }
+    }
+
+    fn flush(&self) {
+        // Optional: Flush logs if necessary
+    }
 }
 
+pub fn init_logger() {
+    log::set_logger(&SerialLogger)
+        .map(|()| log::set_max_level(log::LevelFilter::Info))
+        .unwrap();
+}
+
+
 pub fn init(boot_info: &'static BootInfo) {
+    memory::init(boot_info);
+    init_logger();
+    info!("Logger initialized");
+    info!("Memory initialized");
+
+
     gdt::init();
-    ok_message("GDT initialized");
+    info!("GDT initialized");
 
     interrupts::init_idt();
-    ok_message("IDT initialized");
+    info!("IDT initialized");
 
     unsafe { interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
-    ok_message("Interrupts enabled");
+    info!("Interrupts enabled");
 
-    memory::init(boot_info);
-    ok_message("Memory initialized");
+
     
     ata::init();
-    ok_message("ATA initialized");
+    info!("ATA initialized");
 
     clk::pit::init();
-    ok_message("PIT initialized");
+    info!("PIT initialized");
 
-    print!("[   ");
-    vga::write_str("RUSTNIX", Color::LightRed, Color::Black);
-    print!("    ] Kernel initialized\n");
+    info!("Kernel initialized");
 }
 
 pub fn hlt_loop() -> ! {
@@ -118,8 +177,6 @@ entry_point!(test_kmain);
 /// Entry point for `cargo test`
 #[cfg(test)]
 fn test_kmain(_boot_info: &'static BootInfo) -> ! {
-    use bootloader::BootInfo;
-
     init(_boot_info);
     test_main();
     hlt_loop();

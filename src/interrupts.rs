@@ -1,5 +1,6 @@
+use log::{error, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use crate::{print, println};
+use crate::print;
 use lazy_static::lazy_static;
 use crate::gdt;
 
@@ -16,7 +17,6 @@ lazy_static! {
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
         idt[InterruptIndex::Timer.as_u8()].set_handler_fn(timer_interrupt_handler);
-        idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
         idt.page_fault.set_handler_fn(page_fault_handler); 
         idt[PIC_1_OFFSET].set_handler_fn(irq0_handler);
         idt[PIC_1_OFFSET + 1].set_handler_fn(irq1_handler);
@@ -34,6 +34,7 @@ lazy_static! {
         idt[PIC_1_OFFSET + 13].set_handler_fn(irq13_handler);
         idt[PIC_1_OFFSET + 14].set_handler_fn(irq14_handler);
         idt[PIC_1_OFFSET + 15].set_handler_fn(irq15_handler);
+        idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
         idt
     };
 }
@@ -89,10 +90,10 @@ extern "x86-interrupt" fn page_fault_handler(
 {
     use x86_64::registers::control::Cr2;
 
-    println!("EXCEPTION: PAGE FAULT");
-    println!("Accessed Address: {:?}", Cr2::read());
-    println!("Error Code: {:?}", error_code);
-    println!("{:#?}", stack_frame);
+    error!("EXCEPTION: PAGE FAULT");
+    error!("Accessed Address: {:?}", Cr2::read());
+    error!("Error Code: {:?}", error_code);
+    error!("{:#?}", stack_frame);
     hlt_loop();
 }
 
@@ -118,7 +119,7 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+    warn!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, _error_code: u64) -> ! {
@@ -150,10 +151,6 @@ pub enum InterruptIndex {
 impl InterruptIndex {
     fn as_u8(self) -> u8 {
         self as u8
-    }
-    
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
     }
 }
 

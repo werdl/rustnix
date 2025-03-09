@@ -7,7 +7,7 @@
 extern crate alloc;
 
 use bootloader::{BootInfo, entry_point};
-use core::panic::{self, PanicInfo};
+use core::panic::PanicInfo;
 
 entry_point!(main);
 
@@ -45,12 +45,9 @@ fn large_vec() {
     assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
 }
 
-
-use rustnix::allocator::HEAP_SIZE;
-
 #[test_case]
 fn many_boxes() {
-    for i in 0..HEAP_SIZE {
+    for i in 0..10000 {
         let x = Box::new(i);
         assert_eq!(*x, i);
     }

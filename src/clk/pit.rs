@@ -1,7 +1,7 @@
 
 
-use core::{arch::asm, sync::atomic::{AtomicU64, AtomicUsize, Ordering}};
-use crate::{interrupts, println};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use crate::interrupts;
 use x86_64::instructions::port::Port;
 
 use x86_64::instructions::interrupts as x86_interrupts;

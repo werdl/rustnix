@@ -7,13 +7,14 @@
 use alloc::{borrow::ToOwned, string::String};
 use alloc::vec::Vec;
 use bit_field::BitField;
+use log::{debug, error, trace};
 use core::convert::TryInto;
 use core::fmt;
 use core::hint::spin_loop;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::{clk, println};
+use crate::clk;
 
 // Information Technology
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)
@@ -140,7 +141,7 @@ impl Bus {
         let start = clk::get_time_since_boot();
         while self.status().get_bit(bit as usize) != val {
             if clk::get_time_since_boot() - start > 1.0 {
-                println!(
+                error!(
                     "ATA hanged while polling {:?} bit in status register",
                     bit
                 );
@@ -208,8 +209,8 @@ impl Bus {
             return Err(());
         }
         if self.is_error() {
-            //println!("ATA {:?} command errored", cmd);
-            //self.debug();
+            error!("ATA {:?} command errored", cmd);
+            self.debug();
             return Err(());
         }
         self.poll(Status::BSY, false)?;
@@ -237,7 +238,7 @@ impl Bus {
             chunk.clone_from_slice(&data);
         }
         if self.is_error() {
-            println!("ATA read: data error");
+            error!("ATA read: data error");
             self.debug();
             Err(())
         } else {
@@ -254,7 +255,7 @@ impl Bus {
             self.write_data(data);
         }
         if self.is_error() {
-            println!("ATA write: data error");
+            error!("ATA write: data error");
             self.debug();
             Err(())
         } else {
@@ -298,11 +299,11 @@ impl Bus {
     #[allow(dead_code)]
     fn debug(&mut self) {
         unsafe {
-            println!(
+            trace!(
                 "ATA status register: 0b{:08b} <BSY|DRDY|#|#|DRQ|#|#|ERR>",
                 self.alternate_status_register.read()
             );
-            println!(
+            trace!(
                 "ATA error register:  0b{:08b} <#|#|#|#|#|ABRT|#|#>",
                 self.error_register.read()
             );
@@ -322,7 +323,7 @@ pub fn init() {
     }
 
     for drive in list() {
-        println!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
+        debug!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
     }
 }
 
@@ -333,7 +334,7 @@ pub struct Drive {
     model: String,
     serial: String,
     block_count: u32,
-    block_index: u32,
+    _block_index: u32,
 }
 
 impl Drive {
@@ -359,7 +360,7 @@ impl Drive {
                 model,
                 serial,
                 block_count,
-                block_index,
+                _block_index: block_index,
             })
         } else {
             None
