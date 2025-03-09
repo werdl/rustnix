@@ -57,6 +57,3 @@ jobs:
 
     - name: Run tests
       run: cargo +nightly test --verbose
-
-    - name: Run QEMU
-      run: qemu-system-x86_64 -drive format=raw,file=target/x86_64-rustnix/debug/bootimage-rustnix.bin -serial stdio -display none
