@@ -10,3 +10,4 @@ pub mod ata;
 pub mod clk;
 pub mod fs;
 pub mod syscall;
+pub mod io;
