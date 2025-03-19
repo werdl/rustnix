@@ -5,6 +5,18 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/werdl/rustnix)
 ![GitHub top language](https://img.shields.io/github/languages/top/werdl/rustnix)
 
+## Features
+- [x] Interrupts
+- [x] Memory allocation
+- [x] ATA disk driver
+- [x] Basic inode-based filesystem
+- [x] Clock module
+- [x] Basic async/await support
+- [ ] Syscalls
+- [ ] Processes
+- [ ] ELF Binaries
+- [ ] Basic Userspace  
+
 ## Thanks
 ### Code
 - for the initial stages of this project, I followed [https://os.phil-opp.com/](https://os.phil-opp.com/)
