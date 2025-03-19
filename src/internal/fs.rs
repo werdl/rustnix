@@ -28,9 +28,9 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 use crate::{
-    ata::{BLOCK_SIZE, read, write},
-    clk,
-    file::{File, FileError, FileSystem}
+    internal::ata::{BLOCK_SIZE, read, write},
+    internal::clk,
+    internal::file::{File, FileError, FileSystem}
 };
 
 use alloc::{
@@ -834,10 +834,10 @@ impl PhysFs {
         data_blocks_pointers[0] = inode.data_block_pointers[0];
 
         let mut existing_data_blocks = self.get_all_block_addresses(&inode);
-        
+
         // remove the metadata block (first block)
         existing_data_blocks.remove(0);
-        
+
         for i in 0..num_data_blocks {
             if (i as usize) < existing_data_blocks.len() {
                 data_blocks_pointers[i as usize] = existing_data_blocks[i as usize];

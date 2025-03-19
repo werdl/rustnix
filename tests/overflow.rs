@@ -10,7 +10,7 @@ use rustnix::serial_print;
 pub extern "C" fn _start() -> ! {
     serial_print!("stack_overflow::stack_overflow...\t");
 
-    rustnix::gdt::init();
+    rustnix::internal::gdt::init();
     init_test_idt();
 
     // trigger a stack overflow
@@ -39,7 +39,7 @@ lazy_static! {
         unsafe {
             idt.double_fault
                 .set_handler_fn(test_double_fault_handler)
-                .set_stack_index(rustnix::gdt::DOUBLE_FAULT_IST_INDEX);
+                .set_stack_index(rustnix::internal::gdt::DOUBLE_FAULT_IST_INDEX);
         }
 
         idt

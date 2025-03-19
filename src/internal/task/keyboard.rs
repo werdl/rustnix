@@ -3,6 +3,7 @@ use crossbeam_queue::ArrayQueue;
 use log::warn;
 
 static SCANCODE_QUEUE: OnceCell<ArrayQueue<u8>> = OnceCell::uninit();
+pub static PRESSED_KEYS: spin::Mutex<alloc::collections::BTreeSet<u8>> = spin::Mutex::new(alloc::collections::BTreeSet::new());
 
 pub(crate) fn add_scancode(scancode: u8) {
     if let Ok(queue) = SCANCODE_QUEUE.try_get() {
@@ -62,7 +63,7 @@ static WAKER: AtomicWaker = AtomicWaker::new();
 
 use futures_util::stream::StreamExt;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
-use crate::print;
+use crate::{kprint, internal::vga};
 
 pub async fn print_keypresses() {
     let mut scancodes = ScancodeStream::new();
@@ -73,8 +74,35 @@ pub async fn print_keypresses() {
         if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
             if let Some(key) = keyboard.process_keyevent(key_event) {
                 match key {
-                    DecodedKey::Unicode(character) => print!("{}", character),
-                    DecodedKey::RawKey(key) => print!("{:?}", key),
+                    DecodedKey::Unicode(character) => kprint!("{}", character),
+                    DecodedKey::RawKey(key) => kprint!("{:?}", key),
+                }
+            }
+        }
+    }
+}
+
+pub async fn handle_keypresses() {
+    let mut scancodes = ScancodeStream::new();
+    let mut keyboard = Keyboard::new(ScancodeSet1::new(),
+        layouts::Uk105Key, HandleControl::Ignore);
+
+    while let Some(scancode) = scancodes.next().await {
+        if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+            if let Some(key) = keyboard.process_keyevent(key_event) {
+                match key {
+                    DecodedKey::Unicode(character) => {
+                        if character as u8  == 0x08 {
+                            vga::clear_last_char();
+                            continue;
+                        }
+                        kprint!("{}", character);
+                        PRESSED_KEYS.lock().insert(character as u8);
+                    },
+                    DecodedKey::RawKey(key) => {
+                        kprint!("{:?}", key as u8);
+                    },
+
                 }
             }
         }

@@ -8,23 +8,14 @@
 pub use core::prelude::rust_2024::*;
 
 extern crate alloc;
-pub mod file;
-pub mod vga;
-pub mod serial;
-pub mod interrupts;
-pub mod gdt;
-pub mod memory;
-pub mod allocator;
-pub mod task;
-pub mod ata;
-pub mod clk;
-pub mod fs;
+pub mod internal;
+use internal::{ata, clk, gdt, interrupts, memory, vga};
 
 use core::panic::PanicInfo;
 
 #[allow(unused_imports)]
 use bootloader::{entry_point, BootInfo};
-use vga::Color;
+use internal::vga::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -93,7 +84,7 @@ impl log::Log for SerialLogger {
             // Here you would send the message to a serial port or some output
             // For example, `serial_write(message.as_bytes())`
 
-            print!("[ ");
+            kprint!("[ ");
 
             match level {
                 Level::Error => {
@@ -115,12 +106,12 @@ impl log::Log for SerialLogger {
 
             match level {
                 Level::Warn | Level::Info => {
-                    print!(" ");
+                    kprint!(" ");
                 }
                 _ => {}
             }
 
-            print!("] {}\n", message);
+            kprint!("] {}\n", message);
 
         }
     }
@@ -138,9 +129,9 @@ pub fn init_logger() {
 
 
 pub fn init(boot_info: &'static BootInfo) {
-    print!("[ ");
+    kprint!("[ ");
     vga::write_str("INFO", Color::LightBlue, Color::Black);
-    print!(" ] Initializing memory...\n");
+    kprint!(" ] Initializing memory...\n");
     memory::init(boot_info);
     init_logger();
     info!("Logger initialized");
@@ -158,7 +149,7 @@ pub fn init(boot_info: &'static BootInfo) {
     info!("Interrupts enabled");
 
 
-    
+
     ata::init();
     info!("ATA initialized");
 

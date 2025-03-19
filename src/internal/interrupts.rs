@@ -1,12 +1,12 @@
 use log::{error, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use crate::print;
+use crate::kprint;
 use lazy_static::lazy_static;
-use crate::gdt;
+use crate::internal::gdt;
 
 lazy_static! {
 
-    pub static ref IRQ_HANDLERS: spin::Mutex<[fn(); 16]> = 
+    pub static ref IRQ_HANDLERS: spin::Mutex<[fn(); 16]> =
         spin::Mutex::new([|| {}; 16]);
 
     static ref IDT: InterruptDescriptorTable = {
@@ -17,7 +17,7 @@ lazy_static! {
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
         idt[InterruptIndex::Timer.as_u8()].set_handler_fn(timer_interrupt_handler);
-        idt.page_fault.set_handler_fn(page_fault_handler); 
+        idt.page_fault.set_handler_fn(page_fault_handler);
         idt[PIC_1_OFFSET].set_handler_fn(irq0_handler);
         idt[PIC_1_OFFSET + 1].set_handler_fn(irq1_handler);
         idt[PIC_1_OFFSET + 2].set_handler_fn(irq2_handler);
@@ -104,7 +104,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
 
     let mut port = Port::new(0x60);
     let scancode: u8 = unsafe { port.read() };
-    crate::task::keyboard::add_scancode(scancode);
+    crate::internal::task::keyboard::add_scancode(scancode);
 
     unsafe {
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
@@ -112,7 +112,7 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    print!(".");
+    kprint!(".");
     unsafe {
         PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
@@ -138,7 +138,7 @@ pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
 
-pub static PICS: spin::Mutex<ChainedPics> = 
+pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
 #[derive(Debug, Clone, Copy)]
@@ -153,4 +153,3 @@ impl InterruptIndex {
         self as u8
     }
 }
-

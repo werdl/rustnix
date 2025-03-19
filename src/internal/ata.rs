@@ -14,7 +14,7 @@ use core::hint::spin_loop;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::clk;
+use crate::internal::clk;
 
 // Information Technology
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)

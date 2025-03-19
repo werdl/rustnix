@@ -148,12 +148,33 @@ pub fn write_str(s: &str, fg: Color, bg: Color) {
     });
 }
 
+pub fn clear_last_char() {
+    interrupts::without_interrupts(|| {
+        let mut writer = VGA_WRITER.lock();
+        if writer.col_pos > 0 {
+            writer.col_pos -= 1;
+            writer.write_byte(b' ');
+            writer.col_pos -= 1;
+        }
+    });
+}
+
+pub fn clear_screen() {
+    interrupts::without_interrupts(|| {
+        let mut writer = VGA_WRITER.lock();
+        for row in 0..BUF_HEIGHT {
+            writer.clear_row(row);
+        }
+        writer.col_pos = 0;
+    });
+}
+
 lazy_static! {
     pub static ref VGA_WRITER: Mutex<VgaWriter> = spin::Mutex::new(VgaWriter::new(Color::White, Color::Black));
 }
 
 #[doc(hidden)] // needs to be public for the print! macro, but shouldn't be used directly
-pub fn _print(args: fmt::Arguments) {
+pub fn _kprint(args: fmt::Arguments) {
     use core::fmt::Write;
     use x86_64::instructions::interrupts;
 
@@ -163,25 +184,25 @@ pub fn _print(args: fmt::Arguments) {
 }
 
 #[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => ($crate::vga::_print(core::format_args!($($arg)*)));
+macro_rules! kprint {
+    ($($arg:tt)*) => ($crate::internal::vga::_kprint(core::format_args!($($arg)*)));
 }
 
 #[macro_export]
-macro_rules! println {
+macro_rules! kprintln {
     () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", core::format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::kprint!("{}\n", core::format_args!($($arg)*)));
 }
 
 #[test_case]
-fn test_single_println() {
-    println!("test_println_simple output");
+fn test_single_kprintln() {
+    kprintln!("test_println_simple output");
 }
 
 #[test_case]
-fn test_many_println() {
+fn test_many_kprintln() {
     for _ in 0..200 {
-        println!("test_println_many output");
+        kprintln!("test_println_many output");
     }
 }
 

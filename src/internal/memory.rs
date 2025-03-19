@@ -112,5 +112,5 @@ pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
     let mut mapper = unsafe { init_page_table(phys_mem_offset) };
     let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);
 
-    crate::allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    crate::internal::allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 }

@@ -23,7 +23,7 @@ pub fn _print(args: ::core::fmt::Arguments) {
 #[macro_export]
 macro_rules! serial_print {
     ($($arg:tt)*) => {
-        $crate::serial::_print(core::format_args!($($arg)*));
+        $crate::internal::serial::_print(core::format_args!($($arg)*));
     };
 }
 
