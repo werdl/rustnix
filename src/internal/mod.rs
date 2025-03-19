@@ -11,3 +11,5 @@ pub mod clk;
 pub mod fs;
 pub mod syscall;
 pub mod io;
+pub mod process;
+pub mod devices;

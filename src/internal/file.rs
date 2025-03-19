@@ -1,6 +1,6 @@
 // core file trait that anything involving reading or writing implements
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::{String, ToString}, vec::Vec};
 
 #[derive(Debug)]
 pub enum FileError {
@@ -12,7 +12,7 @@ pub enum FileError {
     NotFoundError(String),
 }
 
-pub trait File {
+pub trait Stream {
     /// Read from the file into the buffer
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError>;
 
@@ -29,10 +29,10 @@ pub trait File {
 
 pub trait FileSystem {
     /// open a file for reading and writing
-    fn open(&mut self, path: &str) -> Result<Box<dyn File>, FileError>;
+    fn open(&mut self, path: &str) -> Result<Box<dyn Stream>, FileError>;
 
     /// create a file for reading and writing
-    fn create(&mut self, path: &str, owner: u64, perms: [u8;3]) -> Result<Box<dyn File>, FileError>;
+    fn create(&mut self, path: &str, owner: u64, perms: [u8;3]) -> Result<Box<dyn Stream>, FileError>;
 
     /// delete a file
     fn delete(&mut self, path: &str) -> Result<(), FileError>;
@@ -54,4 +54,16 @@ pub trait FileSystem {
 
     /// get the permissions of a file
     fn get_perms(&mut self, path: &str) -> Result<[u8;3], FileError>;
+}
+
+pub fn absolute_path(path: &str) -> String {
+    if path.starts_with("/") {
+        return path.to_string();
+    }
+
+    let mut abs_path = "/".to_string();
+
+    abs_path.push_str(path);
+
+    abs_path
 }

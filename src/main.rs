@@ -37,9 +37,8 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     #[cfg(test)]
     test_main();
 
-    let mut executor = Executor::new();
-    executor.spawn(Task::new(keyboard::handle_keypresses()));
-    executor.run();
+
+    loop {}
 
     unreachable!(); // executor.run() should never return
 

@@ -30,7 +30,7 @@ use spin::Mutex;
 use crate::{
     internal::ata::{BLOCK_SIZE, read, write},
     internal::clk,
-    internal::file::{File, FileError, FileSystem}
+    internal::file::{Stream, FileError, FileSystem}
 };
 
 use alloc::{
@@ -1029,7 +1029,7 @@ pub struct FileHandle {
     device: usize,
 }
 
-impl File for FileHandle {
+impl Stream for FileHandle {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
@@ -1072,7 +1072,7 @@ impl File for FileHandle {
 }
 
 impl FileSystem for VirtFs {
-    fn open(&mut self, path: &str) -> Result<Box<dyn File>, FileError> {
+    fn open(&mut self, path: &str) -> Result<Box<dyn Stream>, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.device))
@@ -1091,7 +1091,7 @@ impl FileSystem for VirtFs {
         path: &str,
         owner: u64,
         perms: [u8; 3],
-    ) -> Result<Box<dyn File>, FileError> {
+    ) -> Result<Box<dyn Stream>, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.device))

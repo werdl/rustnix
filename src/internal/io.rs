@@ -1,8 +1,8 @@
-use alloc::{format, string::ToString, vec::Vec};
-use x86_64::registers::mxcsr::read;
-use crate::internal::file::File;
+use alloc::{format, string::{String, ToString}, vec::Vec};
 
-pub enum IoDevice {
+use crate::internal::{devices::{null::Null, rand::Rand}, file::Stream, fs::FileMetadata};
+
+pub enum StdStreams {
     Stdin {
         stream: Vec<u8>,
         reader_cb: fn(&[u8]),
@@ -20,10 +20,10 @@ pub enum IoDevice {
     }
 }
 
-impl File for IoDevice {
+impl Stream for StdStreams {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, super::file::FileError> {
         match self {
-            IoDevice::Stdin { stream, reader_cb } => {
+            StdStreams::Stdin { stream, reader_cb } => {
                 reader_cb(&buf);
                 // copy buf to stream
                 stream.extend_from_slice(buf);
@@ -31,23 +31,23 @@ impl File for IoDevice {
                 Ok(buf.len())
             },
             _ => Err(super::file::FileError::ReadError(format!("Cannot read from {} device", match self {
-                IoDevice::Stdin { .. } => "stdin",
-                IoDevice::Stdout { .. } => "stdout",
-                IoDevice::Stderr { .. } => "stderr",
+                StdStreams::Stdin { .. } => "stdin",
+                StdStreams::Stdout { .. } => "stdout",
+                StdStreams::Stderr { .. } => "stderr",
             })))
         }
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, super::file::FileError> {
         match self {
-            IoDevice::Stdout { stream, writer_cb } => {
+            StdStreams::Stdout { stream, writer_cb } => {
                 writer_cb(&buf);
                 // copy buf to stream
                 stream.extend_from_slice(buf);
 
                 Ok(buf.len())
             },
-            IoDevice::Stderr { stream, writer_cb } => {
+            StdStreams::Stderr { stream, writer_cb } => {
                 writer_cb(&buf);
                 // copy buf to stream
                 stream.extend_from_slice(buf);
@@ -65,4 +65,20 @@ impl File for IoDevice {
     fn flush(&mut self) -> Result<(), super::file::FileError> {
         Ok(())
     }
+}
+
+pub struct File {
+    pub path: String,
+    metadata: FileMetadata,
+}
+
+pub enum Device {
+    Null(Null),
+    Rand(Rand),
+}
+
+pub enum Resource {
+    File(File),
+    StdStream(StdStreams),
+    Device(Device),
 }

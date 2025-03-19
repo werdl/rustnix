@@ -19,3 +19,20 @@ pub const LISTEN : u64 = 0x10;
 pub const ALLOC : u64 = 0x11;
 pub const FREE : u64 = 0x12;
 pub const KIND: u64 = 0x13;
+
+pub fn alloc(size: usize) -> *mut u8 {
+    let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe { alloc::alloc::alloc(layout) }
+}
+
+pub fn free(ptr: *mut u8, size: usize) {
+    let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe { alloc::alloc::dealloc(ptr, layout) }
+}
+
+#[test_case]
+fn test_alloc_free() {
+    let heap_value = alloc(1024);
+    assert!(!heap_value.is_null());
+    free(heap_value, 1024);
+}
