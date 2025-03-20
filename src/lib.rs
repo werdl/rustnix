@@ -123,7 +123,7 @@ impl log::Log for SerialLogger {
 
 pub fn init_logger() {
     log::set_logger(&SerialLogger)
-        .map(|()| log::set_max_level(log::LevelFilter::Debug))
+        .map(|()| log::set_max_level(log::LevelFilter::Trace))
         .unwrap();
 }
 

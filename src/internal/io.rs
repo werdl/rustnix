@@ -1,17 +1,26 @@
 use alloc::{
+    collections::BTreeMap,
     format,
     string::{String, ToString},
     vec::Vec,
 };
+use lazy_static::lazy_static;
+use log::{debug, trace};
+use spin::Mutex;
 
 use crate::internal::{
-    devices::{null::Null, rand::Rand},
-    file::Stream,
-    fs::{self, FileMetadata},
     ata,
-    file::{self, FileSystem}
+    devices::{rand::Rand, zero::Zero},
+    file::Stream,
+    file::{self, FileSystem},
+    fs::{self, FileMetadata},
 };
 
+use super::devices::null::Null;
+
+pub static FILES: Mutex<BTreeMap<u8, Resource>> = Mutex::new(BTreeMap::new());
+
+#[derive(Debug)]
 pub enum StdStreams {
     Stdin {
         stream: Vec<u8>,
@@ -72,7 +81,7 @@ impl Stream for StdStreams {
         }
     }
 
-    fn close(&mut self, _path: Option<&str>) -> Result<(), super::file::FileError> {
+    fn close(&mut self) -> Result<(), super::file::FileError> {
         Ok(())
     }
 
@@ -81,9 +90,9 @@ impl Stream for StdStreams {
     }
 }
 
+#[derive(Debug)]
 pub struct File {
     pub path: String,
-    metadata: FileMetadata,
 }
 
 impl Stream for File {
@@ -96,11 +105,8 @@ impl Stream for File {
         // read from file
         let fs = fses.get_mut(&(bus, dsk)).unwrap();
 
-        let mut file = fs.open(&self
-            .path
-            .split('/')
-            .last()
-            .expect("File path is empty"))
+        let mut file = fs
+            .open(&self.path.split('/').last().expect("File path is empty"))
             .map_err(|e| file::FileError::ReadError(e.to_string()))?;
 
         file.read(buf)
@@ -115,17 +121,14 @@ impl Stream for File {
         // read from file
         let fs = fses.get_mut(&(bus, dsk)).unwrap();
 
-        let mut file = fs.open(&self
-            .path
-            .split('/')
-            .last()
-            .expect("File path is empty"))
+        let mut file = fs
+            .open(&self.path.split('/').last().expect("File path is empty"))
             .map_err(|e| file::FileError::WriteError(e.to_string()))?;
 
         file.write(buf)
     }
 
-    fn close(&mut self, _path: Option<&str>) -> Result<(), file::FileError> {
+    fn close(&mut self) -> Result<(), file::FileError> {
         Ok(())
     }
 
@@ -144,8 +147,10 @@ impl Stream for File {
     }
 }
 
+#[derive(Debug)]
 pub enum Device {
     Null(Null),
+    Zero(Zero),
     Rand(Rand),
 }
 
@@ -155,12 +160,14 @@ impl TryFrom<u8> for Device {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Device::Null(Null::new())),
-            1 => Ok(Device::Rand(Rand::new())),
+            1 => Ok(Device::Zero(Zero::new())),
+            2 => Ok(Device::Rand(Rand::new())),
             _ => Err(format!("Invalid device number: {}", value)),
         }
     }
 }
 
+#[derive(Debug)]
 pub enum Resource {
     File(File),
     StdStream(StdStreams),
@@ -171,6 +178,7 @@ impl Stream for Device {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, super::file::FileError> {
         match self {
             Device::Null(inner) => inner.read(buf),
+            Device::Zero(inner) => inner.read(buf),
             Device::Rand(inner) => inner.read(buf),
         }
     }
@@ -178,20 +186,23 @@ impl Stream for Device {
     fn write(&mut self, buf: &[u8]) -> Result<usize, super::file::FileError> {
         match self {
             Device::Null(inner) => inner.write(buf),
+            Device::Zero(inner) => inner.write(buf),
             Device::Rand(inner) => inner.write(buf),
         }
     }
 
-    fn close(&mut self, _path: Option<&str>) -> Result<(), super::file::FileError> {
+    fn close(&mut self) -> Result<(), super::file::FileError> {
         match self {
-            Device::Null(inner) => inner.close(_path),
-            Device::Rand(inner) => inner.close(_path),
+            Device::Null(inner) => inner.close(),
+            Device::Zero(inner) => inner.close(),
+            Device::Rand(inner) => inner.close(),
         }
     }
 
     fn flush(&mut self) -> Result<(), super::file::FileError> {
         match self {
             Device::Null(inner) => inner.flush(),
+            Device::Zero(inner) => inner.flush(),
             Device::Rand(inner) => inner.flush(),
         }
     }
@@ -214,11 +225,11 @@ impl Stream for Resource {
         }
     }
 
-    fn close(&mut self, path: Option<&str>) -> Result<(), super::file::FileError> {
+    fn close(&mut self) -> Result<(), super::file::FileError> {
         match self {
-            Resource::File(file) => file.close(path),
-            Resource::StdStream(stream) => stream.close(path),
-            Resource::Device(device) => device.close(path),
+            Resource::File(file) => file.close(),
+            Resource::StdStream(stream) => stream.close(),
+            Resource::Device(device) => device.close(),
         }
     }
 
@@ -228,5 +239,81 @@ impl Stream for Resource {
             Resource::StdStream(stream) => stream.flush(),
             Resource::Device(device) => device.flush(),
         }
+    }
+}
+
+pub fn open(path: &str) -> u8 {
+    let resource = match path {
+        "/dev/null" => Resource::Device(Device::Null(Null::new())),
+        "/dev/zero" => Resource::Device(Device::Zero(Zero::new())),
+        "/dev/random" => Resource::Device(Device::Rand(Rand::new())),
+        // TODO: streams
+        _ => Resource::File(File {
+            path: path.to_string(),
+        }),
+    };
+
+    let mut files = FILES.lock();
+
+    let fd = files.len() as u8;
+
+    files.insert(fd, resource);
+    fd
+}
+
+pub fn write(fd: u8, buf: &[u8]) -> Result<usize, super::file::FileError> {
+    let mut files = FILES.lock();
+
+    let resource: Option<&mut Resource> = files.get_mut(&fd);
+
+    match resource {
+        Some(resource) => resource.write(buf),
+        None => Err(super::file::FileError::WriteError(format!(
+            "Invalid file descriptor: {}",
+            fd
+        ))),
+    }
+}
+
+pub fn read(fd: u8, buf: &mut [u8]) -> Result<usize, super::file::FileError> {
+    let mut files = FILES.lock();
+
+    let resource: Option<&mut Resource> = files.get_mut(&fd);
+
+    match resource {
+        Some(resource) => resource.read(buf),
+        None => Err(super::file::FileError::ReadError(format!(
+            "Invalid file descriptor: {}",
+            fd
+        ))),
+    }
+}
+
+pub fn close(fd: u8) -> Result<(), super::file::FileError> {
+    let mut files = FILES.lock();
+
+    let resource: Option<Resource> = files.remove(&fd);
+
+
+    match resource {
+        Some(mut resource) => resource.close(),
+        None => Err(super::file::FileError::CloseError(format!(
+            "Invalid file descriptor: {}",
+            fd
+        ))),
+    }
+}
+
+pub fn flush(fd: u8) -> Result<(), super::file::FileError> {
+    let mut files = FILES.lock();
+
+    let resource: Option<&mut Resource> = files.get_mut(&fd);
+
+    match resource {
+        Some(resource) => resource.flush(),
+        None => Err(super::file::FileError::FlushError(format!(
+            "Invalid file descriptor: {}",
+            fd
+        ))),
     }
 }

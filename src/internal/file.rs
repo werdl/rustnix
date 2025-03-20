@@ -56,8 +56,8 @@ pub trait Stream {
     /// Write from the buffer into the file
     fn write(&mut self, buf: &[u8])  -> Result<usize, FileError>;
 
-    /// close the file (if path is None, close the file that was opened with the open function, arg exists as some implementations need to be able to have multiple files open at once)
-    fn close(&mut self, path: Option<&str>) -> Result<(), FileError>;
+    /// close the file
+    fn close(&mut self) -> Result<(), FileError>;
 
     /// flush all pending writes - note that for some implementations this may not be necessary, and this function may do nothing, but it is still required to be implemented (even if it just returns Ok(()))
     /// for example, the virtual filesystem needs to implement, as disk writes are comparatively expensive when compared to memory writes

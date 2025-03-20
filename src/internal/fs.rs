@@ -1034,7 +1034,7 @@ impl Stream for FileHandle {
         Ok(buf.len())
     }
 
-    fn close(&mut self, _path: Option<&str>) -> Result<(), FileError> {
+    fn close(&mut self) -> Result<(), FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))

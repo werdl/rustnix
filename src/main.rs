@@ -12,7 +12,7 @@ use core::{intrinsics::unreachable, panic::PanicInfo};
 use bootloader::{entry_point, BootInfo};
 #[allow(unused_imports)]
 use rustnix::kprintln;
-use rustnix::{internal::task::{executor::Executor, keyboard, Task}};
+use rustnix::internal::{devices::rand, file::Stream, io, task::{executor::Executor, keyboard, Task}};
 
 
 #[cfg(not(test))]
@@ -36,6 +36,15 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
+    let mut buf = [0u8; 24];
+
+    let file = io::open("/dev/random");
+
+    io::read(file, &mut buf);
+
+    kprintln!("Data read from /dev/random: {:?}", buf);
+
+
 
 
     loop {}
