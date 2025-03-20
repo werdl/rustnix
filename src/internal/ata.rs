@@ -7,7 +7,7 @@
 use alloc::{borrow::ToOwned, string::String};
 use alloc::vec::Vec;
 use bit_field::BitField;
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use core::convert::TryInto;
 use core::fmt;
 use core::hint::spin_loop;
@@ -325,6 +325,13 @@ pub fn init() {
     for drive in list() {
         debug!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
     }
+
+    // print probable disk
+    if let Ok((bus, dsk)) = likely_disk() {
+        info!("Probable disk: {}:{} {}", bus, dsk, Drive::open(bus, dsk).unwrap());
+    } else {
+        warn!("No disk found");
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -414,4 +421,27 @@ pub fn read(bus: u8, drive: u8, block: u32, buf: &mut [u8]) -> Result<(), ()> {
 pub fn write(bus: u8, drive: u8, block: u32, buf: &[u8]) -> Result<(), ()> {
     let mut buses = BUSES.lock();
     buses[bus as usize].write(drive, block, buf)
+}
+
+pub fn likely_disk() -> Result<(u8, u8), ()> {
+    let drives = list();
+    if drives.len() == 0 {
+        return Err(());
+    }
+
+    // get the drive with the most blocks
+    let mut max = 0;
+
+    let mut bus = 0;
+    let mut dsk = 0;
+
+    for drive in drives {
+        if drive.block_count() > max {
+            max = drive.block_count();
+            bus = drive.bus;
+            dsk = drive.dsk;
+        }
+    }
+
+    Ok((bus, dsk))
 }

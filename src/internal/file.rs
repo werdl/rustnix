@@ -1,6 +1,10 @@
 // core file trait that anything involving reading or writing implements
 
+use core::fmt::{Display, Formatter};
+
 use alloc::{boxed::Box, string::{String, ToString}, vec::Vec};
+
+use super::fs::FsError;
 
 #[derive(Debug)]
 pub enum FileError {
@@ -10,6 +14,39 @@ pub enum FileError {
     FlushError(String),
     PermissionError(String),
     NotFoundError(String),
+}
+
+impl From<FsError> for FileError {
+    fn from(fs_error: FsError) -> Self {
+        match fs_error {
+            FsError::InvalidPath => FileError::PermissionError(fs_error.to_string()),
+            FsError::FileNotFound => FileError::NotFoundError(fs_error.to_string()),
+            FsError::FileExists => FileError::WriteError(fs_error.to_string()),
+            FsError::DiskFull => FileError::WriteError(fs_error.to_string()),
+            FsError::OutOfInodes => FileError::WriteError(fs_error.to_string()),
+            FsError::OutOfDataBlocks => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidInode => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidDataBlock => FileError::WriteError(fs_error.to_string()),
+            FsError::InvalidSuperblock => FileError::ReadError(fs_error.to_string()),
+            FsError::InvalidInodeTable => FileError::ReadError(fs_error.to_string()),
+            FsError::InvalidMetadata => FileError::ReadError(fs_error.to_string()),
+            FsError::WriteError => FileError::WriteError(fs_error.to_string()),
+            FsError::ReadError => FileError::ReadError(fs_error.to_string()),
+        }
+    }
+}
+
+impl Display for FileError {
+    fn fmt(&self, f: &mut Formatter) -> alloc::fmt::Result {
+        match self {
+            FileError::ReadError(s) => write!(f, "ReadError: {}", s),
+            FileError::WriteError(s) => write!(f, "WriteError: {}", s),
+            FileError::CloseError(s) => write!(f, "CloseError: {}", s),
+            FileError::FlushError(s) => write!(f, "FlushError: {}", s),
+            FileError::PermissionError(s) => write!(f, "PermissionError: {}", s),
+            FileError::NotFoundError(s) => write!(f, "NotFoundError: {}", s),
+        }
+    }
 }
 
 pub trait Stream {

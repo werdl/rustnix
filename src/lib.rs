@@ -72,7 +72,7 @@ pub struct SerialLogger;
 impl log::Log for SerialLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         // You can filter logs based on level
-        metadata.level() <= Level::Info
+        metadata.level() <= log::max_level()
     }
 
     fn log(&self, record: &Record) {
@@ -123,7 +123,7 @@ impl log::Log for SerialLogger {
 
 pub fn init_logger() {
     log::set_logger(&SerialLogger)
-        .map(|()| log::set_max_level(log::LevelFilter::Info))
+        .map(|()| log::set_max_level(log::LevelFilter::Debug))
         .unwrap();
 }
 

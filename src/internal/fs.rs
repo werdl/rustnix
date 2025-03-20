@@ -45,7 +45,7 @@ pub const MAGIC_NUMER: u64 = 0x42371337;
 pub const POINTERS_PER_BLOCK: usize = BLOCK_SIZE / 8; // 8: size of u64
 
 lazy_static! {
-    static ref FILESYSTEMS: Mutex<HashMap<(usize, usize), VirtFs>> = Mutex::new(HashMap::new());
+    pub static ref FILESYSTEMS: Mutex<HashMap<(usize, usize), VirtFs>> = Mutex::new(HashMap::new());
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -94,9 +94,9 @@ pub struct PhysFs {
     pub data_blocks: Vec<DataBlock>,
 }
 
-fn read_sector(bus: u8, device: u8, sector: u32) -> Result<Vec<u8>, ()> {
+fn read_sector(bus: u8, dsk: u8, sector: u32) -> Result<Vec<u8>, ()> {
     let mut buf = vec![0; BLOCK_SIZE];
-    read(bus, device, sector, &mut buf)?;
+    read(bus, dsk, sector, &mut buf)?;
     Ok(buf)
 }
 
@@ -539,7 +539,7 @@ impl PhysFs {
         })
     }
 
-    fn write_to_disk(&self, bus: usize, device: usize) -> Result<(), FsError> {
+    pub fn write_to_disk(&self, bus: usize, device: usize) -> Result<(), FsError> {
         // write the superblock to the disk
         let mut sector_data = vec![0; BLOCK_SIZE];
         sector_data[0..8].copy_from_slice(&self.superblock.magic_number.to_le_bytes());
@@ -940,25 +940,25 @@ impl PhysFs {
 /// the exposed API for the filesystem, which implements File
 #[derive(Debug, Clone)]
 pub struct VirtFs {
-    phys_fs: PhysFs,
+    pub phys_fs: PhysFs,
     bus: usize,
-    device: usize,
+    dsk: usize,
 
     open_files: Vec<FileHandle>,
 }
 
 impl VirtFs {
     /// load the filesystem from a disk
-    pub fn from_disk(bus: usize, device: usize) -> Result<(), FsError> {
-        let phys_fs = PhysFs::read_from_disk(bus, device)?;
+    pub fn from_disk(bus: usize, dsk: usize) -> Result<(), FsError> {
+        let phys_fs = PhysFs::read_from_disk(bus, dsk)?;
 
         let mut file_systems = FILESYSTEMS.lock();
         file_systems.insert(
-            (bus, device),
+            (bus, dsk),
             VirtFs {
                 phys_fs,
                 bus,
-                device,
+                dsk,
                 open_files: Vec::new(),
             },
         );
@@ -967,10 +967,10 @@ impl VirtFs {
     }
 
     /// create a new filesystem with a given size, on a given bus and device (note that this call will NOT format the disk, instead the first flush call will)
-    pub fn new(bus: usize, device: usize, disk_size: u64) {
+    pub fn new(bus: usize, dsk: usize, disk_size: u64) {
         let mut file_systems = FILESYSTEMS.lock();
         file_systems.insert(
-            (bus, device),
+            (bus, dsk),
             VirtFs {
                 phys_fs: PhysFs {
                     superblock: Superblock {
@@ -995,45 +995,27 @@ impl VirtFs {
                     data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
                 },
                 bus: bus,
-                device: device,
+                dsk,
                 open_files: Vec::new(),
             },
         );
     }
 }
 
-impl From<FsError> for FileError {
-    fn from(fs_error: FsError) -> Self {
-        match fs_error {
-            FsError::InvalidPath => FileError::PermissionError(fs_error.to_string()),
-            FsError::FileNotFound => FileError::NotFoundError(fs_error.to_string()),
-            FsError::FileExists => FileError::WriteError(fs_error.to_string()),
-            FsError::DiskFull => FileError::WriteError(fs_error.to_string()),
-            FsError::OutOfInodes => FileError::WriteError(fs_error.to_string()),
-            FsError::OutOfDataBlocks => FileError::WriteError(fs_error.to_string()),
-            FsError::InvalidInode => FileError::WriteError(fs_error.to_string()),
-            FsError::InvalidDataBlock => FileError::WriteError(fs_error.to_string()),
-            FsError::InvalidSuperblock => FileError::ReadError(fs_error.to_string()),
-            FsError::InvalidInodeTable => FileError::ReadError(fs_error.to_string()),
-            FsError::InvalidMetadata => FileError::ReadError(fs_error.to_string()),
-            FsError::WriteError => FileError::WriteError(fs_error.to_string()),
-            FsError::ReadError => FileError::ReadError(fs_error.to_string()),
-        }
-    }
-}
+
 
 #[derive(Debug, Clone)]
 pub struct FileHandle {
     file_name: String,
     bus: usize,
-    device: usize,
+    dsk: usize,
 }
 
 impl Stream for FileHandle {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
 
@@ -1046,7 +1028,7 @@ impl Stream for FileHandle {
     fn write(&mut self, buf: &[u8]) -> Result<usize, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         fs.phys_fs.write_file(&self.file_name, buf, None, None)?;
         Ok(buf.len())
@@ -1055,7 +1037,7 @@ impl Stream for FileHandle {
     fn close(&mut self, _path: Option<&str>) -> Result<(), FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         fs.open_files.retain(|f| f.file_name != self.file_name);
         Ok(())
@@ -1064,9 +1046,9 @@ impl Stream for FileHandle {
     fn flush(&mut self) -> Result<(), FileError> {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get(&(self.bus, self.device))
+            .get(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
-        fs.phys_fs.write_to_disk(fs.bus, fs.device)?;
+        fs.phys_fs.write_to_disk(fs.bus, fs.dsk)?;
         Ok(())
     }
 }
@@ -1075,13 +1057,13 @@ impl FileSystem for VirtFs {
     fn open(&mut self, path: &str) -> Result<Box<dyn Stream>, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let (_data, _) = fs.phys_fs.read_file(path)?;
         let file_handle = FileHandle {
             file_name: path.to_string(),
             bus: self.bus,
-            device: self.device,
+            dsk: self.dsk,
         };
         Ok(Box::new(file_handle))
     }
@@ -1094,13 +1076,13 @@ impl FileSystem for VirtFs {
     ) -> Result<Box<dyn Stream>, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         fs.phys_fs.create_file(path, perms, owner)?;
         let file_handle = FileHandle {
             file_name: path.to_string(),
             bus: self.bus,
-            device: self.device,
+            dsk: self.dsk,
         };
         Ok(Box::new(file_handle))
     }
@@ -1108,7 +1090,7 @@ impl FileSystem for VirtFs {
     fn delete(&mut self, path: &str) -> Result<(), FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         for i in 0..inode.num_data_blocks {
@@ -1123,14 +1105,14 @@ impl FileSystem for VirtFs {
 
     fn exists(&mut self, path: &str) -> bool {
         let file_systems = FILESYSTEMS.lock();
-        let fs = file_systems.get(&(self.bus, self.device)).unwrap();
+        let fs = file_systems.get(&(self.bus, self.dsk)).unwrap();
         fs.phys_fs.find_inode_by_name(path).is_ok()
     }
 
     fn chmod(&mut self, path: &str, perms: [u8; 3]) -> Result<(), FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let mut updated_inode = inode.clone();
@@ -1188,7 +1170,7 @@ impl FileSystem for VirtFs {
     fn chown(&mut self, path: &str, owner: u64) -> Result<(), FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get_mut(&(self.bus, self.device))
+            .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let mut updated_inode = inode.clone();
@@ -1247,7 +1229,7 @@ impl FileSystem for VirtFs {
     fn get_owner(&mut self, path: &str) -> Result<u64, FileError> {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get(&(self.bus, self.device))
+            .get(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
@@ -1284,7 +1266,7 @@ impl FileSystem for VirtFs {
     fn get_perms(&mut self, path: &str) -> Result<[u8; 3], FileError> {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get(&(self.bus, self.device))
+            .get(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
@@ -1323,7 +1305,7 @@ impl FileSystem for VirtFs {
     fn list(&mut self, path: &str) -> Result<Vec<String>, FileError> {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
-            .get(&(self.bus, self.device))
+            .get(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
         let mut files = Vec::new();
         for inode in fs.phys_fs.inode_table.iter() {
@@ -1336,10 +1318,61 @@ impl FileSystem for VirtFs {
     }
 }
 
-pub fn get_fs(bus: usize, device: usize) -> Result<Box<dyn FileSystem>, FileError> {
+pub fn get_fs_mut(bus: usize, dsk: usize) -> Result<&'static mut VirtFs, FileError> {
+    let mut file_systems = FILESYSTEMS.lock();
+    let fs = file_systems.get_mut(&(bus, dsk)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+    // Use Box::leak to safely extend the lifetime of the reference to 'static
+    Ok(Box::leak(Box::new(fs.clone())))
+}
+
+pub fn get_first_good_fs() -> Result<(usize, usize), FileError> {
     let file_systems = FILESYSTEMS.lock();
-    if let Some(fs) = file_systems.get(&(bus, device)) {
-        Ok(Box::new(fs.clone()))
+    if let Some(((bus, dsk), _)) = file_systems.iter().next() {
+        // check is
+        Ok((*bus, *dsk))
+    } else {
+        Err(FileError::NotFoundError("Filesystem not found".to_string()))
+    }
+}
+
+pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), FileError> {
+    let mut file_systems = FILESYSTEMS.lock();
+    if file_systems.contains_key(&(bus, dsk)) {
+        return Err(FileError::WriteError("Filesystem already exists".to_string()));
+    }
+
+    if size_of_new.is_some() {
+        file_systems.insert(
+            (bus, dsk),
+            VirtFs {
+                phys_fs: PhysFs {
+                    superblock: Superblock {
+                        magic_number: MAGIC_NUMER,
+                        disk_size: size_of_new.unwrap() as u64,
+                        inode_table_size: 1024,
+                        data_block_size: 512,
+                        num_inodes: 1024,
+                        num_data_blocks: (size_of_new.unwrap() as u64 / 512) - 1024 - 1, // superblock + inode table
+                    },
+                    inode_table: vec![
+                        Inode {
+                            num_data_blocks: 0,
+                            data_block_pointers: [0; 12],
+                            single_indirect_block_pointer: 0,
+                            double_indirect_block_pointer: 0,
+                            triple_indirect_block_pointer: 0,
+                            file_name: [0; 384],
+                        };
+                        1024
+                    ],
+                    data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+                },
+                bus,
+                dsk,
+                open_files: Vec::new(),
+            },
+        );
+        Ok(())
     } else {
         Err(FileError::NotFoundError("Filesystem not found".to_string()))
     }
@@ -1371,7 +1404,7 @@ fn test_create_file() {
             data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
         },
         bus: 0,
-        device: 0,
+        dsk: 0,
         open_files: Vec::new(),
     };
 
@@ -1409,7 +1442,7 @@ fn test_write_file() {
             data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
         },
         bus: 0,
-        device: 0,
+        dsk: 0,
         open_files: Vec::new(),
     };
 
@@ -1461,7 +1494,7 @@ fn test_chmod_file() {
             data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
         },
         bus: 0,
-        device: 0,
+        dsk: 0,
         open_files: Vec::new(),
     };
 
@@ -1500,7 +1533,7 @@ fn test_chown_file() {
             data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
         },
         bus: 0,
-        device: 0,
+        dsk: 0,
         open_files: Vec::new(),
     };
 
@@ -1541,7 +1574,7 @@ fn test_delete_file() {
             data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
         },
         bus: 0,
-        device: 0,
+        dsk: 0,
         open_files: Vec::new(),
     };
 

@@ -24,3 +24,9 @@ impl Stream for Null {
         Ok(())
     }
 }
+
+impl Null {
+    pub fn new() -> Self {
+        Null {}
+    }
+}
