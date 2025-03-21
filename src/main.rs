@@ -7,12 +7,12 @@
 
 extern crate alloc;
 
-use core::{intrinsics::unreachable, panic::PanicInfo};
+use core::{intrinsics::unreachable, panic::PanicInfo, u8};
 
 use bootloader::{entry_point, BootInfo};
 #[allow(unused_imports)]
 use rustnix::kprintln;
-use rustnix::internal::{devices::rand, file::Stream, io, task::{executor::Executor, keyboard, Task}};
+use rustnix::internal::{devices::rand, file::{FileFlags, Stream}, io, task::{executor::Executor, Task}};
 
 
 #[cfg(not(test))]
@@ -38,11 +38,11 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     test_main();
     let mut buf = [0u8; 24];
 
-    let file = io::open("/dev/random");
+    let file = io::open("/dev/stdin", FileFlags::Read as u8);
 
     io::read(file, &mut buf);
 
-    kprintln!("Data read from /dev/random: {:?}", buf);
+    kprintln!("Data read from /dev/stdin: {:?}", buf);
 
 
 

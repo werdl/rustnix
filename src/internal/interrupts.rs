@@ -34,7 +34,6 @@ lazy_static! {
         idt[PIC_1_OFFSET + 13].set_handler_fn(irq13_handler);
         idt[PIC_1_OFFSET + 14].set_handler_fn(irq14_handler);
         idt[PIC_1_OFFSET + 15].set_handler_fn(irq15_handler);
-        idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
         idt
     };
 }
@@ -95,20 +94,6 @@ extern "x86-interrupt" fn page_fault_handler(
     error!("Error Code: {:?}", error_code);
     error!("{:#?}", stack_frame);
     hlt_loop();
-}
-
-extern "x86-interrupt" fn keyboard_interrupt_handler(
-    _stack_frame: InterruptStackFrame)
-{
-    use x86_64::instructions::port::Port;
-
-    let mut port = Port::new(0x60);
-    let scancode: u8 = unsafe { port.read() };
-    crate::internal::task::keyboard::add_scancode(scancode);
-
-    unsafe {
-        PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
-    }
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {

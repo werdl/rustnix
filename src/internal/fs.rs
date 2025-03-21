@@ -41,6 +41,8 @@ use alloc::{
 };
 use hashbrown::HashMap;
 
+use super::file::FileFlags;
+
 pub const MAGIC_NUMER: u64 = 0x42371337;
 pub const POINTERS_PER_BLOCK: usize = BLOCK_SIZE / 8; // 8: size of u64
 
@@ -1009,6 +1011,34 @@ pub struct FileHandle {
     file_name: String,
     bus: usize,
     dsk: usize,
+    flags: u8,
+}
+
+impl FileHandle {
+    pub fn new(file_name: String, bus: usize, dsk: usize, flags: u8) -> Self {
+        FileHandle {
+            file_name,
+            bus,
+            dsk,
+            flags,
+        }
+    }
+
+    pub fn new_with_likely_fs(file_name: String, flags: u8) -> Result<Self, FileError> {
+        let file_systems = FILESYSTEMS.lock();
+        for (key, fs) in file_systems.iter() {
+            if fs.phys_fs.find_inode_by_name(&file_name).is_ok() {
+                return Ok(FileHandle {
+                    file_name,
+                    bus: key.0,
+                    dsk: key.1,
+                    flags,
+                });
+            }
+        }
+
+        Err(FileError::NotFoundError("File not found".to_string()))
+    }
 }
 
 impl Stream for FileHandle {
@@ -1017,6 +1047,11 @@ impl Stream for FileHandle {
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+
+        if !(self.flags & (FileFlags::Read as u8) != 0) {
+            return Err(FileError::PermissionError("File is not readable".to_string()));
+        }
+
         let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
 
         // we know data will be a multiple of 512 bytes
@@ -1030,6 +1065,11 @@ impl Stream for FileHandle {
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+
+        if !(self.flags & (FileFlags::Write as u8) != 0) {
+            return Err(FileError::PermissionError("File is not writable".to_string()));
+        }
+
         fs.phys_fs.write_file(&self.file_name, buf, None, None)?;
         Ok(buf.len())
     }
@@ -1051,38 +1091,35 @@ impl Stream for FileHandle {
         fs.phys_fs.write_to_disk(fs.bus, fs.dsk)?;
         Ok(())
     }
+
+    fn poll(&mut self, event: super::file::IOEvent) -> bool {
+        match event {
+            super::file::IOEvent::Read => !(self.flags & (FileFlags::Read as u8) != 0),
+            super::file::IOEvent::Write => !(self.flags & (FileFlags::Write as u8) != 0),
+        }
+    }
 }
 
 impl FileSystem for VirtFs {
-    fn open(&mut self, path: &str) -> Result<Box<dyn Stream>, FileError> {
+    fn open(&mut self, path: &str, flags: u8) -> Result<Box<dyn Stream>, FileError> {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
             .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
-        let (_data, _) = fs.phys_fs.read_file(path)?;
-        let file_handle = FileHandle {
-            file_name: path.to_string(),
-            bus: self.bus,
-            dsk: self.dsk,
-        };
-        Ok(Box::new(file_handle))
-    }
+        let res = fs.phys_fs.read_file(path);
+        if res.is_err() {
+            if flags & (FileFlags::Create as u8) != 0 {
+                fs.phys_fs.create_file(path, [6, 6, 6], 0)?;
+            } else {
+                return Err(FileError::NotFoundError("File not found".to_string()));
+            }
+        }
 
-    fn create(
-        &mut self,
-        path: &str,
-        owner: u64,
-        perms: [u8; 3],
-    ) -> Result<Box<dyn Stream>, FileError> {
-        let mut file_systems = FILESYSTEMS.lock();
-        let fs = file_systems
-            .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
-        fs.phys_fs.create_file(path, perms, owner)?;
         let file_handle = FileHandle {
             file_name: path.to_string(),
             bus: self.bus,
             dsk: self.dsk,
+            flags,
         };
         Ok(Box::new(file_handle))
     }
@@ -1410,7 +1447,7 @@ fn test_create_file() {
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    fs.open("test.txt", FileFlags::Create as u8).unwrap();
     assert!(fs.exists("test.txt"));
 
     FILESYSTEMS.lock().remove(&(0, 0));
@@ -1448,17 +1485,17 @@ fn test_write_file() {
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    fs.open("test.txt", FileFlags::Create as u8).unwrap();
 
     let data = b"Hello, world!";
-    fs.open("test.txt")
+    fs.open("test.txt", FileFlags::Write as u8)
         .expect("Failed to open file")
         .write(data)
         .expect("Failed to write to file");
 
     // only the first 32 bytes will be returned to us
     let mut buf = [0; 32];
-    fs.open("test.txt")
+    fs.open("test.txt", FileFlags::Read as u8)
         .expect("Failed to open file")
         .read(&mut buf)
         .expect("Failed to read from file");
@@ -1500,7 +1537,7 @@ fn test_chmod_file() {
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    fs.open("test.txt", FileFlags::Create as u8).unwrap();
 
     fs.chmod("test.txt", [1, 1, 1]).unwrap();
     let perms = fs.get_perms("test.txt").unwrap();
@@ -1539,7 +1576,7 @@ fn test_chown_file() {
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    fs.open("test.txt", FileFlags::Create as u8).unwrap();
 
     fs.chown("test.txt", 1).unwrap();
     let owner = fs.get_owner("test.txt").unwrap();
@@ -1580,7 +1617,7 @@ fn test_delete_file() {
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.create("test.txt", 0, [0, 0, 0]).unwrap();
+    fs.open("test.txt", FileFlags::Create as u8).unwrap();
 
     fs.delete("test.txt").unwrap();
     assert_eq!(fs.exists("test.txt"), false);

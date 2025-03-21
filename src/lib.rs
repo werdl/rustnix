@@ -9,7 +9,7 @@ pub use core::prelude::rust_2024::*;
 
 extern crate alloc;
 pub mod internal;
-use internal::{ata, clk, gdt, interrupts, memory, vga};
+use internal::{ata, clk, console, gdt, interrupts, keyboard, memory, vga};
 
 use core::panic::PanicInfo;
 
@@ -136,6 +136,9 @@ pub fn init(boot_info: &'static BootInfo) {
     init_logger();
     info!("Logger initialized");
     info!("Memory initialized");
+
+    keyboard::init();
+    info!("Console initialized");
 
 
     gdt::init();

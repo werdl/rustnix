@@ -72,6 +72,18 @@ impl VgaWriter {
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
+            0x08 => {
+                if self.col_pos > 0 {
+                    self.col_pos -= 1;
+                    // manually write a space to clear the character
+                    let row = BUF_HEIGHT - 1;
+                    let col = self.col_pos;
+                    self.buf.chars[row][col].write(VgaChar {
+                        ascii_char: b' ',
+                        color_code: self.color_code,
+                    });
+                }
+            }
             byte => {
                 if self.col_pos >= BUF_WIDTH {
                     self.new_line();
@@ -116,6 +128,7 @@ impl VgaWriter {
     pub fn write_str(&mut self, s: &str) {
         for byte in s.bytes() {
             match byte {
+                0x08 => self.write_byte(byte),
                 0x20..=0x7e | b'\n' => self.write_byte(byte),
                 _ => self.write_byte(0xfe), // ■
             }

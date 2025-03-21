@@ -1,6 +1,6 @@
 // core file trait that anything involving reading or writing implements
 
-use core::fmt::{Display, Formatter};
+use core::{fmt::{Display, Formatter}, ops::BitOr};
 
 use alloc::{boxed::Box, string::{String, ToString}, vec::Vec};
 
@@ -49,6 +49,11 @@ impl Display for FileError {
     }
 }
 
+pub enum IOEvent {
+    Read,
+    Write,
+}
+
 pub trait Stream {
     /// Read from the file into the buffer
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError>;
@@ -62,14 +67,39 @@ pub trait Stream {
     /// flush all pending writes - note that for some implementations this may not be necessary, and this function may do nothing, but it is still required to be implemented (even if it just returns Ok(()))
     /// for example, the virtual filesystem needs to implement, as disk writes are comparatively expensive when compared to memory writes
     fn flush(&mut self) -> Result<(), FileError>;
+
+    /// poll the file for read readiness
+    fn poll(&mut self, event: IOEvent) -> bool;
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum FileFlags {
+    Read = 1,
+    Write = 2,
+    Append = 4,
+    Create = 8,
+    Truncate = 16,
+    Device = 32,
+}
+
+impl FileFlags {
+    pub fn is_set(&self, flags: u8) -> bool {
+        flags & (*self as u8) != 0
+    }
+}
+
+impl BitOr for FileFlags {
+    type Output = u8;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self as u8 | rhs as u8
+    }
 }
 
 pub trait FileSystem {
-    /// open a file for reading and writing
-    fn open(&mut self, path: &str) -> Result<Box<dyn Stream>, FileError>;
-
-    /// create a file for reading and writing
-    fn create(&mut self, path: &str, owner: u64, perms: [u8;3]) -> Result<Box<dyn Stream>, FileError>;
+    /// open a file
+    fn open(&mut self, path: &str, flags: u8) -> Result<Box<dyn Stream>, FileError>;
 
     /// delete a file
     fn delete(&mut self, path: &str) -> Result<(), FileError>;

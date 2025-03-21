@@ -13,3 +13,5 @@ pub mod syscall;
 pub mod io;
 pub mod process;
 pub mod devices;
+pub mod console;
+pub mod keyboard;
