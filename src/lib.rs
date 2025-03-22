@@ -121,10 +121,54 @@ impl log::Log for SerialLogger {
     }
 }
 
+
+use log::LevelFilter;
+
+#[cfg(feature = "trace_log")]
+const LOG_LEVEL: LevelFilter = LevelFilter::Trace;
+
+#[cfg(feature = "debug_log")]
+const LOG_LEVEL: LevelFilter = LevelFilter::Debug;
+
+#[cfg(feature = "warn_log")]
+const LOG_LEVEL: LevelFilter = LevelFilter::Warn;
+
+#[cfg(feature = "error_log")]
+const LOG_LEVEL: LevelFilter = LevelFilter::Error;
+
+#[cfg(all(feature = "info_log", not(any(feature = "trace_log", feature = "debug_log", feature = "warn_log", feature = "error_log"))))]
+const LOG_LEVEL: LevelFilter = LevelFilter::Info;
+
+
 pub fn init_logger() {
     log::set_logger(&SerialLogger)
-        .map(|()| log::set_max_level(log::LevelFilter::Trace))
+        .map(|()| log::set_max_level(LOG_LEVEL))
         .unwrap();
+}
+
+pub static ASCII_ART: &str =
+r"______          _         _
+| ___ \        | |       (_)
+| |_/ /   _ ___| |_ _ __  ___  __
+|    / | | / __| __| '_ \| \ \/ /
+| |\ \ |_| \__ \ |_| | | | |>  <
+\_| \_\__,_|___/\__|_| |_|_/_/\_\";
+
+fn write_str_rainbow(s: &str) {
+    let mut fg = Color::Red;
+    for c in s.chars() {
+        crate::vga::write_char(c, fg, Color::Black);
+        fg = match fg {
+            Color::Red => Color::LightRed,
+            Color::LightRed => Color::Yellow,
+            Color::Yellow => Color::LightGreen,
+            Color::LightGreen => Color::LightCyan,
+            Color::LightCyan => Color::LightBlue,
+            Color::LightBlue => Color::Magenta,
+            Color::Magenta => Color::Pink,
+            _ => Color::Red,
+        };
+    }
 }
 
 pub fn init(boot_info: &'static BootInfo) {
@@ -136,8 +180,8 @@ pub fn init(boot_info: &'static BootInfo) {
     info!("Logger initialized");
     info!("Memory initialized");
 
-    // syscall::init();
-    // info!("Syscalls initialized");
+    syscall::init();
+    info!("Syscalls initialized");
 
     keyboard::init();
     info!("Console initialized");
@@ -148,8 +192,7 @@ pub fn init(boot_info: &'static BootInfo) {
     interrupts::init_idt();
     info!("IDT initialized");
 
-    unsafe { interrupts::PICS.lock().initialize() };
-    x86_64::instructions::interrupts::enable();
+    interrupts::init();
     info!("Interrupts enabled");
 
     clk::pit::init();
@@ -159,6 +202,13 @@ pub fn init(boot_info: &'static BootInfo) {
     info!("ATA initialized");
 
     info!("Kernel initialized");
+
+    #[cfg(feature = "ascii-art")]
+    {
+        write_str_rainbow(ASCII_ART);
+        kprintln!();
+    }
+
 }
 
 pub fn hlt_loop() -> ! {

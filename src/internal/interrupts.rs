@@ -1,7 +1,8 @@
 use crate::internal::gdt;
 use crate::kprint;
+use crate::internal::interrupts;
 use lazy_static::lazy_static;
-use log::{error, warn};
+use log::{error, trace, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
@@ -39,7 +40,15 @@ lazy_static! {
 
 /// Initialize the Interrupt Descriptor Table
 pub fn init_idt() {
+    trace!("Initializing IDT");
     IDT.load();
+}
+
+/// Initialize the interrupt system
+pub fn init() {
+    trace!("Initializing interrupts");
+    unsafe { interrupts::PICS.lock().initialize() };
+    x86_64::instructions::interrupts::enable();
 }
 
 /// Set the handler for an IRQ

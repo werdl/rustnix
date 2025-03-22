@@ -3,8 +3,13 @@
 set -e  # Exit on any error
 
 # Step 1: Compile the kernel
-cargo build --target x86_64-rustnix.json
-cargo bootimage --target x86_64-rustnix.json
+if [[ -n "$1" ]]; then
+    cargo build --target x86_64-rustnix.json --features $(echo $1_log)
+else
+    cargo build --target x86_64-rustnix.json
+fi
+
+cargo bootimage --target x86_64-rustnix.json --features $(echo $1_log)
 
 # Ensure the build was successful
 if [[ ! $? -eq 0 ]]; then

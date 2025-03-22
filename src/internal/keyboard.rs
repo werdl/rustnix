@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use log::trace;
 use pc_keyboard::{
     DecodedKey, HandleControl, KeyCode, KeyState, Keyboard, ScancodeSet1, layouts::Uk105Key,
 };
@@ -77,5 +78,6 @@ fn interrupt_handler() {
 
 /// Initialize the keyboard
 pub fn init() {
+    trace!("Initializing keyboard");
     crate::internal::interrupts::set_irq_handler(1, interrupt_handler);
 }

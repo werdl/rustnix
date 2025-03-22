@@ -55,3 +55,13 @@ harness = false
 
 [workspace.lints.rust]
 missing_docs = "warn"
+
+[features]
+# info logging is the default
+default = ["info_log", "ascii-art"]
+trace_log = [] # Enable trace logging
+debug_log = [] # Enable debug logging
+info_log = [] # Enable info logging
+warn_log = [] # Enable warn logging (don't show info logs)
+error_log = [] # Enable error logging (don't show info or warn logs)
+ascii-art = [] # print ASCII art on boot

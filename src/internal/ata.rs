@@ -12,7 +12,7 @@ use core::convert::TryInto;
 use core::fmt;
 use core::hint::spin_loop;
 use lazy_static::lazy_static;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 
@@ -20,7 +20,7 @@ use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)
 // (1998)
 
-/// size of a block in bytes
+/// The size of a block in bytes
 pub const BLOCK_SIZE: usize = 512;
 
 /// Keep track of the last selected bus and drive pair to speed up operations
@@ -55,7 +55,7 @@ enum Status {
     BSY = 7,  // Busy
 }
 
-/// Represents an ATA bus
+/// An ATA bus
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Bus {
@@ -79,7 +79,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    /// Create a new ATA bus struct
+    /// Create a new bus
     pub fn new(id: u8, io_base: u16, ctrl_base: u16, irq: u8) -> Self {
         Self {
             id,
@@ -302,16 +302,18 @@ impl Bus {
 }
 
 lazy_static! {
-    /// List of ATA buses
+    /// The ATA buses
     pub static ref BUSES: Mutex<Vec<Bus>> = Mutex::new(Vec::new());
 }
 
 /// Initialize the ATA driver
 pub fn init() {
-    let mut buses = BUSES.lock();
-    buses.push(Bus::new(0, 0x1F0, 0x3F6, 14));
-    buses.push(Bus::new(1, 0x170, 0x376, 15));
-
+    trace!("Initializing ATA driver");
+    {
+        let mut buses = BUSES.lock();
+        buses.push(Bus::new(0, 0x1F0, 0x3F6, 14));
+        buses.push(Bus::new(1, 0x170, 0x376, 15));
+    }
 
     for drive in list() {
         debug!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
@@ -319,7 +321,7 @@ pub fn init() {
 
     // print probable disk
     if let Ok((bus, dsk)) = likely_disk() {
-        info!(
+        debug!(
             "Probable disk: {}:{} {}",
             bus,
             dsk,
@@ -330,12 +332,12 @@ pub fn init() {
     }
 }
 
-/// Represents an ATA drive
+/// An ATA drive
 #[derive(Clone, Debug)]
 pub struct Drive {
-    /// Bus number
+    /// The bus number
     pub bus: u8,
-    /// Drive number
+    /// The drive number
     pub dsk: u8,
     model: String,
     serial: String,
@@ -427,7 +429,7 @@ pub fn write(bus: u8, drive: u8, block: u32, buf: &[u8]) -> Result<(), ()> {
     buses[bus as usize].write(drive, block, buf)
 }
 
-/// Get the most likely disk drive (ie. the one with the most blocks)
+/// Get the bus and drive of the most likely disk (the one with the most blocks)
 pub fn likely_disk() -> Result<(u8, u8), ()> {
     let drives = list();
     if drives.len() == 0 {

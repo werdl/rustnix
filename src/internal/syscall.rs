@@ -1,5 +1,5 @@
 use alloc::string::ToString;
-use log::warn;
+use log::{trace, warn};
 use spin::Mutex;
 
 use crate::internal::{
@@ -153,6 +153,7 @@ fn test_alloc_free() {
 
 /// initialize the syscall interface (currently just initializes block devices)
 pub fn init() {
+    trace!("Initializing syscall interface");
     // initialize all block devices (ie. pop a fd into FILES for each block device)
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut files = FILES.lock();

@@ -1,3 +1,4 @@
+use log::trace;
 use x86_64::structures::paging::{OffsetPageTable, PageTable};
 use x86_64::{PhysAddr, VirtAddr};
 
@@ -108,6 +109,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
 
 /// Initialize the memory system
 pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
+    trace!("Initializing memory");
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { init_page_table(phys_mem_offset) };
     let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);

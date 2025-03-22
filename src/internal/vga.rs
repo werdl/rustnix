@@ -137,11 +137,11 @@ impl VgaWriter {
 
     /// Write a string to the VGA buffer
     pub fn write_str(&mut self, s: &str) {
-        for byte in s.bytes() {
-            match byte {
-                0x08 => self.write_byte(byte),
-                0x20..=0x7e | b'\n' => self.write_byte(byte),
-                _ => self.write_byte(0xfe), // ■
+        for c in s.chars() {
+            match c {
+                '\n' => self.write_byte(b'\n'),
+                c if c.is_ascii() => self.write_byte(c as u8),
+                _ => self.write_byte(0xfe), // ■ for unsupported characters
             }
         }
     }
@@ -222,7 +222,7 @@ macro_rules! kprint {
 /// Print to the VGA buffer with a newline
 #[macro_export]
 macro_rules! kprintln {
-    () => ($crate::print!("\n"));
+    () => ($crate::kprint!("\n"));
     ($($arg:tt)*) => ($crate::kprint!("{}\n", core::format_args!($($arg)*)));
 }
 
