@@ -30,7 +30,7 @@ use spin::Mutex;
 use crate::{
     internal::ata::{BLOCK_SIZE, read, write},
     internal::clk,
-    internal::file::{FileError, FileSystem, Stream, FileFlags},
+    internal::file::{FileError, FileFlags, FileSystem, Stream},
 };
 
 use alloc::{
@@ -73,7 +73,6 @@ struct Inode {
     triple_indirect_block_pointer: u64,
     file_name: [u8; 384],
 }
-
 
 /// A data block
 #[derive(Debug, Clone, Copy)]
@@ -1089,7 +1088,7 @@ impl FileHandle {
             bus,
             dsk,
             flags,
-            file_pos: 0
+            file_pos: 0,
         }
     }
 
@@ -1125,12 +1124,11 @@ impl Stream for FileHandle {
 
         let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
 
-        if self.file_pos >= data.len() {
-            return Ok(0); // EOF
-        }
+        // we know data will be a multiple of 512 bytes
 
         let len = buf.len().min(data.len() - self.file_pos);
-        buf[..len].copy_from_slice(&data[self.file_pos..self.file_pos + len]);
+        buf.copy_from_slice(&data[self.file_pos..self.file_pos + len]);
+
         self.file_pos += len;
 
         Ok(len)
