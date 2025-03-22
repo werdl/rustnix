@@ -1,14 +1,16 @@
 use alloc::{format, string::String};
 
+/// The Programmable Interval Timer (PIT)
 pub mod pit;
+/// The Real-Time Clock (RTC)
 pub mod rtc;
 
-// return the time since boot in seconds
+/// return the time since boot in seconds
 pub fn get_time_since_boot() -> f64 {
     pit::get_ticks() as f64 * pit::PIT_INTERVAL
 }
 
-// Get the current time from the RTC
+/// Get the current time from the RTC
 pub fn get_time() -> String {
     let (second, minute, hour, day, month, year) = rtc::read_rtc();
     format!(
@@ -22,7 +24,7 @@ pub fn get_time() -> String {
     )
 }
 
-// Calculate Unix time (seconds since 1970-01-01 00:00:00 UTC)
+/// Calculate Unix time (seconds since 1970-01-01 00:00:00 UTC)
 pub fn get_unix_time() -> u64 {
     let (second, minute, hour, day, month, year) = rtc::read_rtc();
     let year = year as i64 + 2000;
@@ -55,4 +57,4 @@ fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0)
 }
 
-pub use pit::{get_unix_time_ns, sleep, wait};
+pub use pit::{get_boot_time_ns, sleep, wait};

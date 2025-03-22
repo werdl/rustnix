@@ -1,4 +1,7 @@
+/// The heap start address
 pub const HEAP_START: usize = 0x4444_4444_0000;
+
+/// size of heap in bytes
 pub const HEAP_SIZE: usize = 10 * 1024 * 1024; // 10 MB
 
 use x86_64::VirtAddr;
@@ -11,6 +14,7 @@ use linked_list_allocator::LockedHeap;
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
+/// Initialize the heap
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,

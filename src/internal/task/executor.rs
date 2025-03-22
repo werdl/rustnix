@@ -5,6 +5,7 @@ use core::task::Waker;
 use core::task::{Context, Poll};
 use crossbeam_queue::ArrayQueue;
 
+/// The executor struct
 pub struct Executor {
     tasks: BTreeMap<TaskId, Task>,
     task_queue: Arc<ArrayQueue<TaskId>>,
@@ -12,6 +13,7 @@ pub struct Executor {
 }
 
 impl Executor {
+    /// Create a new executor
     pub fn new() -> Executor {
         Executor {
             tasks: BTreeMap::new(),
@@ -20,6 +22,7 @@ impl Executor {
         }
     }
 
+    /// Spawn a new task
     pub fn spawn(&mut self, task: Task) {
         let task_id = task.id;
         if self.tasks.insert(task_id, task).is_some() {
@@ -56,12 +59,14 @@ impl Executor {
         }
     }
 
+    /// Run the executor
     pub fn run(&mut self) -> ! {
         loop {
             self.run_ready_tasks();
         }
     }
 
+    /// Sleep if idle
     pub fn sleep_if_idle(&self) {
         use x86_64::instructions::interrupts::{self, enable_and_hlt};
 

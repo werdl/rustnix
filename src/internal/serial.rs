@@ -3,6 +3,7 @@ use spin::Mutex;
 use uart_16550::SerialPort;
 
 lazy_static! {
+    /// Serial port 1
     pub static ref SERIAL1: Mutex<SerialPort> = {
         let mut serial_port = unsafe { SerialPort::new(0x3f8) };
         serial_port.init();
@@ -23,6 +24,7 @@ pub fn _print(args: ::core::fmt::Arguments) {
     });
 }
 
+/// Print to the serial port
 #[macro_export]
 macro_rules! serial_print {
     ($($arg:tt)*) => {
@@ -30,6 +32,7 @@ macro_rules! serial_print {
     };
 }
 
+/// Print to the serial port with a newline
 #[macro_export]
 macro_rules! serial_println {
     () => {

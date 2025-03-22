@@ -6,9 +6,12 @@ use core::{
     task::{Context, Poll},
 };
 
+/// serves the Executor struct
 pub mod executor;
+/// serves the SimpleExecutor struct (doesn't sleep when waiting for tasks)
 pub mod simple_executor;
 
+/// TaskId struct
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(u64);
 
@@ -19,12 +22,14 @@ impl TaskId {
     }
 }
 
+/// Task struct
 pub struct Task {
     id: TaskId,
     future: Pin<Box<dyn Future<Output = ()>>>,
 }
 
 impl Task {
+    /// Create a new task
     pub fn new(future: impl Future<Output = ()> + 'static) -> Task {
         Task {
             id: TaskId::new(),
@@ -32,6 +37,7 @@ impl Task {
         }
     }
 
+    /// Poll the task to see if it has completed
     pub fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         self.future.as_mut().poll(cx)
     }

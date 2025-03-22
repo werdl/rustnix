@@ -5,9 +5,10 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-pub use core::prelude::rust_2024::*;
-
+/// import the allocator crate
 extern crate alloc;
+
+/// internal modules, not exposed to userspace
 pub mod internal;
 use internal::{ata, clk, gdt, interrupts, keyboard, memory, vga};
 

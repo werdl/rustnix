@@ -9,11 +9,10 @@ use crate::internal::{
     io::{Device, FILES, File},
 };
 
-
-/// syscall.rs - implements system calls, including the handler (which will be invoked from the interrupt file)
-
+/// Error number of the last error
 pub static ERRNO: Mutex<u8> = Mutex::new(0);
 
+/// Error codes
 pub enum Error {
     /// Not super-user
     EPERM = 1,
@@ -83,44 +82,67 @@ fn set_errno(errno: Error) {
     *ERRNO.lock() = errno as u8;
 }
 
+/// read from a file descriptor
 pub const READ: u64 = 0x1;
+/// write to a file descriptor
 pub const WRITE: u64 = 0x2;
+/// open a file and return a file descriptor
 pub const OPEN: u64 = 0x3;
+/// close a file descriptor
 pub const CLOSE: u64 = 0x4;
+/// flush a file descriptor
 pub const FLUSH: u64 = 0x5;
+/// exit the current process
 pub const EXIT: u64 = 0x6;
+/// sleep for a number of milliseconds
 pub const SLEEP: u64 = 0x7;
+/// wait for a child process to exit
 pub const WAIT: u64 = 0x8;
+/// get the process ID
 pub const GETPID: u64 = 0x9;
+/// execute a new process
 pub const EXEC: u64 = 0xA;
+/// fork the current process
 pub const FORK: u64 = 0xB;
+/// get the thread ID
 pub const GETTID: u64 = 0xC;
+/// stop the current process
 pub const STOP: u64 = 0xD;
+/// wait for a child process to exit
 pub const WAITPID: u64 = 0xE;
+/// connect to a socket
 pub const CONNECT: u64 = 0xF;
+/// accept a connection on a socket
 pub const ACCEPT: u64 = 0x10;
+/// listen for connections on a socket
 pub const LISTEN: u64 = 0x11;
+/// allocate memory
 pub const ALLOC: u64 = 0x12;
+/// free memory
 pub const FREE: u64 = 0x13;
+/// get the kind of the current process
 pub const KIND: u64 = 0x14;
+/// get the last error number
 pub const GETERRNO: u64 = 0x15;
 
+/// get the last error number (GETERRNO)
 pub fn get_errno() -> u8 {
     *ERRNO.lock()
 }
 
-
-
+/// allocate memory (ALLOC)
 pub fn alloc(size: usize) -> *mut u8 {
     let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
     unsafe { alloc::alloc::alloc(layout) }
 }
 
+/// free memory (FREE)
 pub fn free(ptr: *mut u8, size: usize) {
     let layout = core::alloc::Layout::from_size_align(size, 1).unwrap();
     unsafe { alloc::alloc::dealloc(ptr, layout) }
 }
 
+/// test the alloc and free functions
 #[test_case]
 fn test_alloc_free() {
     let heap_value = alloc(1024);
@@ -128,6 +150,7 @@ fn test_alloc_free() {
     free(heap_value, 1024);
 }
 
+/// open a file (OPEN)
 pub fn open(path: &str, flags: u8) -> i8 {
     let resource = match path {
         "/dev/null" => File::Device(Device::Null(Null::new(flags))),
@@ -156,6 +179,7 @@ pub fn open(path: &str, flags: u8) -> i8 {
     fd
 }
 
+/// write to a file descriptor (WRITE)
 pub fn write(fd: u8, buf: &[u8]) -> Result<usize, crate::internal::file::FileError> {
     let mut files = FILES.lock();
 
@@ -167,6 +191,7 @@ pub fn write(fd: u8, buf: &[u8]) -> Result<usize, crate::internal::file::FileErr
     }
 }
 
+/// read from a file descriptor (READ)
 pub fn read(fd: u8, buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
     let mut files = FILES.lock();
 
@@ -178,6 +203,7 @@ pub fn read(fd: u8, buf: &mut [u8]) -> Result<usize, crate::internal::file::File
     }
 }
 
+/// close a file descriptor (CLOSE)
 pub fn close(fd: u8) -> Result<(), crate::internal::file::FileError> {
     let mut files = FILES.lock();
 
@@ -190,6 +216,7 @@ pub fn close(fd: u8) -> Result<(), crate::internal::file::FileError> {
     }
 }
 
+/// flush a file descriptor (FLUSH)
 pub fn flush(fd: u8) -> Result<(), crate::internal::file::FileError> {
     let mut files = FILES.lock();
 

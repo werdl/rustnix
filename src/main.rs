@@ -45,8 +45,6 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     loop {}
 
-    unreachable!(); // executor.run() should never return
-
     // let mut buf = vec![0;512];
 
     // ata::read(0, 1, 1, &mut buf);

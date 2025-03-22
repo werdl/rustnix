@@ -5,6 +5,7 @@ use log::{error, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
+    /// Array of interrupt handlers
     pub static ref IRQ_HANDLERS: spin::Mutex<[fn(); 16]> = spin::Mutex::new([|| {}; 16]);
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -35,10 +36,13 @@ lazy_static! {
         idt
     };
 }
+
+/// Initialize the Interrupt Descriptor Table
 pub fn init_idt() {
     IDT.load();
 }
 
+/// Set the handler for an IRQ
 pub fn set_irq_handler(irq: u8, handler: fn()) {
     x86_64::instructions::interrupts::without_interrupts(|| {
         let mut handlers = IRQ_HANDLERS.lock();
@@ -48,6 +52,7 @@ pub fn set_irq_handler(irq: u8, handler: fn()) {
 
 macro_rules! irq_handler {
     ($handler:ident, $irq:expr) => {
+        /// Handler for IRQ $irq
         pub extern "x86-interrupt" fn $handler(_: InterruptStackFrame) {
             let handlers = IRQ_HANDLERS.lock();
             handlers[$irq]();
@@ -110,6 +115,7 @@ extern "x86-interrupt" fn double_fault_handler(
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
+/// Test the breakpoint exception
 #[test_case]
 fn test_breakpoint_exception() {
     x86_64::instructions::interrupts::int3();
@@ -118,16 +124,22 @@ fn test_breakpoint_exception() {
 use pic8259::ChainedPics;
 use spin;
 
+/// Offset for the controller PIC
 pub const PIC_1_OFFSET: u8 = 32;
+/// Offset for the worker PIC
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
+/// The Programmable Interrupt Controller
 pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
 
+/// interrupt types
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum InterruptIndex {
+    /// Timer interrupt
     Timer = PIC_1_OFFSET,
+    /// Keyboard interrupt
     Keyboard,
 }
 

@@ -5,14 +5,11 @@ use core::{
     ops::BitOr,
 };
 
-use alloc::{
-    boxed::Box,
-    string::String,
-    vec::Vec,
-};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 use super::{fs::FsError, syscall::Error};
 
+/// FileInner is a struct that contains the error and an optional message
 #[derive(Debug)]
 pub struct FileInner {
     fs_error: FsError,
@@ -28,13 +25,20 @@ impl From<FsError> for FileInner {
     }
 }
 
+/// FileError is an enum that contains all the possible errors that can occur when working with files
 #[derive(Debug)]
 pub enum FileError {
+    /// Error reading from a file
     ReadError(FileInner),
+    /// Error writing to a file
     WriteError(FileInner),
+    /// Error closing a file
     CloseError(FileInner),
+    /// Error flushing a file
     FlushError(FileInner),
+    /// Error with permissions
     PermissionError(FileInner),
+    /// File not found
     NotFoundError(FileInner),
 }
 
@@ -66,7 +70,7 @@ impl From<FsError> for FileError {
 fn print_msg_or_error(
     f: &mut Formatter,
     msg: &Option<String>,
-    fs_error: &FsError
+    fs_error: &FsError,
 ) -> alloc::fmt::Result {
     // write the error anyway, even if there is a message
     write!(f, "{:?}", fs_error)?;
@@ -130,11 +134,15 @@ impl From<FileError> for Error {
     }
 }
 
+/// IOEvent is an enum that contains the possible events that can occur when reading or writing to a file
 pub enum IOEvent {
+    /// Read event
     Read,
+    /// Write event
     Write,
 }
 
+/// Stream is a trait that contains the functions that need to be implemented when reading or writing to a file
 pub trait Stream {
     /// Read from the file into the buffer
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError>;
@@ -153,18 +161,26 @@ pub trait Stream {
     fn poll(&mut self, event: IOEvent) -> bool;
 }
 
+/// FileFlags is an enum that contains the possible flags that can be set when opening a file
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum FileFlags {
+    /// Read flag
     Read = 1,
+    /// Write flag
     Write = 2,
+    /// Append flag - write to the end of the file
     Append = 4,
+    /// Create flag - create the file if it does not exist
     Create = 8,
+    /// Truncate flag - truncate the file if it already exists
     Truncate = 16,
+    /// Device flag - open a device file
     Device = 32,
 }
 
 impl FileFlags {
+    /// check if a flag is set
     pub fn is_set(&self, flags: u8) -> bool {
         flags & (*self as u8) != 0
     }
@@ -178,6 +194,7 @@ impl BitOr for FileFlags {
     }
 }
 
+/// FileSystem is a trait that contains the functions that need to be implemented when working with a filesystem
 pub trait FileSystem {
     /// open a file
     fn open(&mut self, path: &str, flags: u8) -> Result<Box<dyn Stream>, FileError>;
@@ -204,6 +221,7 @@ pub trait FileSystem {
     fn get_perms(&mut self, path: &str) -> Result<[u8; 3], FileError>;
 }
 
+/// turn a relative path into an absolute path
 pub fn absolute_path(path: &str) -> String {
     if path.starts_with("/") {
         return path.into();

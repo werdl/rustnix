@@ -9,6 +9,7 @@ use volatile::Volatile;
 use x86_64::instructions::interrupts;
 
 #[allow(dead_code)]
+#[allow(missing_docs)] // no need to document this, only colours
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Color {
@@ -30,16 +31,19 @@ pub enum Color {
     White = 15,
 }
 
+/// A combination of a foreground and background color
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ColorCode(u8);
 
 impl ColorCode {
+    /// Create a new ColorCode with the given foreground and background colors
     pub const fn new(foreground: Color, background: Color) -> ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
 
+/// A character in the VGA buffer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct VgaChar {
@@ -47,11 +51,13 @@ pub struct VgaChar {
     color_code: ColorCode,
 }
 
+/// The VGA buffer
 #[repr(transparent)]
 pub struct Buffer {
     chars: [[Volatile<VgaChar>; BUF_WIDTH]; BUF_HEIGHT],
 }
 
+/// The VGA writer
 pub struct VgaWriter {
     col_pos: usize,
     color_code: ColorCode,
@@ -59,6 +65,7 @@ pub struct VgaWriter {
 }
 
 impl VgaWriter {
+    /// Create a new VgaWriter with the given foreground and background colors
     pub fn new(fg: Color, bg: Color) -> VgaWriter {
         let buf = unsafe { &mut *(0xb8000 as *mut Buffer) };
 
@@ -69,6 +76,7 @@ impl VgaWriter {
         }
     }
 
+    /// Write a byte to the VGA buffer
     pub fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
@@ -102,6 +110,7 @@ impl VgaWriter {
         }
     }
 
+    /// Clear a row in the VGA buffer
     pub fn clear_row(&mut self, row: usize) {
         let blank = VgaChar {
             ascii_char: b' ',
@@ -113,6 +122,7 @@ impl VgaWriter {
         }
     }
 
+    /// Move to a new line in the VGA buffer
     pub fn new_line(&mut self) {
         for row in 1..BUF_HEIGHT {
             for col in 0..BUF_WIDTH {
@@ -125,6 +135,7 @@ impl VgaWriter {
         self.col_pos = 0;
     }
 
+    /// Write a string to the VGA buffer
     pub fn write_str(&mut self, s: &str) {
         for byte in s.bytes() {
             match byte {
@@ -143,6 +154,7 @@ impl fmt::Write for VgaWriter {
     }
 }
 
+/// Write a character to the VGA buffer
 pub fn write_char(c: char, fg: Color, bg: Color) {
     interrupts::without_interrupts(|| {
         let mut writer = VGA_WRITER.lock();
@@ -153,6 +165,7 @@ pub fn write_char(c: char, fg: Color, bg: Color) {
     });
 }
 
+/// Write a string to the VGA buffer
 pub fn write_str(s: &str, fg: Color, bg: Color) {
     interrupts::without_interrupts(|| {
         for c in s.chars() {
@@ -161,6 +174,7 @@ pub fn write_str(s: &str, fg: Color, bg: Color) {
     });
 }
 
+/// Clear the last character in the VGA buffer
 pub fn clear_last_char() {
     interrupts::without_interrupts(|| {
         let mut writer = VGA_WRITER.lock();
@@ -172,6 +186,7 @@ pub fn clear_last_char() {
     });
 }
 
+/// Clear the entire VGA buffer
 pub fn clear_screen() {
     interrupts::without_interrupts(|| {
         let mut writer = VGA_WRITER.lock();
@@ -183,6 +198,7 @@ pub fn clear_screen() {
 }
 
 lazy_static! {
+    /// The global VGA writer
     pub static ref VGA_WRITER: Mutex<VgaWriter> =
         spin::Mutex::new(VgaWriter::new(Color::White, Color::Black));
 }
@@ -197,31 +213,36 @@ pub fn _kprint(args: fmt::Arguments) {
     });
 }
 
+/// Print to the VGA buffer
 #[macro_export]
 macro_rules! kprint {
     ($($arg:tt)*) => ($crate::internal::vga::_kprint(core::format_args!($($arg)*)));
 }
 
+/// Print to the VGA buffer with a newline
 #[macro_export]
 macro_rules! kprintln {
     () => ($crate::print!("\n"));
     ($($arg:tt)*) => ($crate::kprint!("{}\n", core::format_args!($($arg)*)));
 }
 
+/// test a single kprintln
 #[test_case]
 fn test_single_kprintln() {
-    kprintln!("test_println_simple output");
+    kprintln!("test_kprintln_simple output");
 }
 
+/// test 200 kprintlns
 #[test_case]
 fn test_many_kprintln() {
     for _ in 0..200 {
-        kprintln!("test_println_many output");
+        kprintln!("test_kprintln_many output");
     }
 }
 
+/// test kprintln output is correct
 #[test_case]
-fn test_println_output() {
+fn test_kprintln_output() {
     use core::fmt::Write;
     use x86_64::instructions::interrupts;
 

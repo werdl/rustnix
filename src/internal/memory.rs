@@ -11,6 +11,7 @@ unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut
     unsafe { &mut *page_table_ptr } // unsafe bit
 }
 
+/// Translates the given virtual address to the mapped physical address
 pub unsafe fn translate_addr(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Option<PhysAddr> {
     translate_addr_inner(addr, physical_memory_offset)
 }
@@ -55,6 +56,7 @@ unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'
 
 use x86_64::structures::paging::{FrameAllocator, Page, PhysFrame, Size4KiB};
 
+/// Create a mapping in the page table that maps the given page to the given frame
 pub fn create_example_mapping(
     page: Page,
     mapper: &mut OffsetPageTable,
@@ -72,12 +74,14 @@ pub fn create_example_mapping(
 
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 
+/// A FrameAllocator that returns usable frames from the bootloader's memory map
 pub struct BootInfoFrameAllocator {
     memory_map: &'static MemoryMap,
     next: usize,
 }
 
 impl BootInfoFrameAllocator {
+    /// Create a FrameAllocator from the passed memory map
     pub fn init(memory_map: &'static MemoryMap) -> Self {
         BootInfoFrameAllocator {
             memory_map,
@@ -102,6 +106,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     }
 }
 
+/// Initialize the memory system
 pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { init_page_table(phys_mem_offset) };

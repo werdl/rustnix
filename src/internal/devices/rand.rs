@@ -8,6 +8,7 @@ use crate::internal::clk::get_unix_time;
 use crate::internal::file::{FileFlags, Stream};
 use crate::internal::fs::FsError;
 
+/// The random device
 #[derive(Debug)]
 pub struct Rand {
     inner: SmallRng,
@@ -15,6 +16,7 @@ pub struct Rand {
 }
 
 impl Rand {
+    /// Create a new random device
     pub fn new(flags: u8) -> Self {
         Rand {
             inner: SmallRng::seed_from_u64(get_unix_time()),
@@ -62,6 +64,7 @@ impl Stream for Rand {
 }
 
 impl Rand {
+    /// Generate a random value of type T
     pub fn random<T>(&mut self) -> T
     where
         rand::distr::StandardUniform: rand::distr::Distribution<T>,
@@ -70,6 +73,7 @@ impl Rand {
     }
 }
 
+/// Test the random device
 #[test_case]
 fn test_rand() {
     let mut rand = Rand::new(FileFlags::Read | FileFlags::Write);

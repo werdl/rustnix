@@ -8,26 +8,39 @@ use crate::kprint;
 
 use crate::internal::file::Stream;
 
+/// Backspace character
 pub const BACKSPACE: char = '\x08';
+
+/// End of text character (Ctrl+C)
 pub const END_OF_TEXT: char = '\x03';
+
+/// End of transmission character (Ctrl+D)
 pub const END_OF_TRANSMISSION: char = '\x04';
+
+/// Escape character
 pub const ESC: char = '\x1B';
 
+/// Console struct
 #[derive(Debug)]
-pub struct Console {
-    stdin_index: usize,
-}
+pub struct Console;
 
+/// should input be echoed to the screen
 pub static ECHO: AtomicBool = AtomicBool::new(true);
+
+/// stdin buffer
 pub static STDIN: Mutex<String> = Mutex::new(String::new());
+
+/// raw mode flag
 pub static RAW_MODE: AtomicBool = AtomicBool::new(false);
 
 impl Console {
+    /// Create a new Console
     pub fn new() -> Self {
-        Console { stdin_index: 0 }
+        Console {}
     }
 }
 
+/// Read a single character from stdin
 pub fn read_single_char() -> char {
     loop {
         let res = interrupts::without_interrupts(|| STDIN.lock().pop());
@@ -38,45 +51,32 @@ pub fn read_single_char() -> char {
     }
 }
 
-pub fn read_line() -> String {
-    loop {
-        let res = interrupts::without_interrupts(|| {
-            let mut stdin = STDIN.lock();
-            match stdin.chars().next_back() {
-                Some('\n') => {
-                    let line = stdin.clone();
-                    stdin.clear();
-                    Some(line)
-                }
-                _ => None,
-            }
-        });
-        if let Some(line) = res {
-            return line;
-        }
-    }
-}
-
+/// enable raw mode
 pub fn enable_raw_mode() {
     RAW_MODE.store(true, core::sync::atomic::Ordering::SeqCst);
 }
 
+/// disable raw mode
 pub fn disable_raw_mode() {
     RAW_MODE.store(false, core::sync::atomic::Ordering::SeqCst);
 }
 
+/// check if raw mode is enabled
 pub fn is_raw_mode() -> bool {
     RAW_MODE.load(core::sync::atomic::Ordering::SeqCst)
 }
 
+/// enable echo
 pub fn enable_echo() {
     ECHO.store(true, core::sync::atomic::Ordering::SeqCst);
 }
 
+/// disable echo
 pub fn disable_echo() {
     ECHO.store(false, core::sync::atomic::Ordering::SeqCst);
 }
 
+/// check if echo is enabled
 pub fn is_echo() -> bool {
     ECHO.load(core::sync::atomic::Ordering::SeqCst)
 }
@@ -131,7 +131,6 @@ impl Stream for Console {
             buf[i] = read_single_char() as u8;
             i += 1;
         }
-        self.stdin_index += i;
         Ok(i)
     }
 

@@ -4,12 +4,14 @@ use crate::internal::{
     fs::FsError,
 };
 
+/// Null device
 #[derive(Debug)]
 pub struct Null {
     inner: zero::Zero,
 }
 
 impl Null {
+    /// Create a new null device
     pub fn new(flags: u8) -> Self {
         Null {
             inner: zero::Zero::new(flags),
@@ -52,6 +54,7 @@ impl Stream for Null {
     }
 }
 
+/// Test the null device
 #[test_case]
 fn test_null() {
     let mut null = Null::new(FileFlags::Read | FileFlags::Write);

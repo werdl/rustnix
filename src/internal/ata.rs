@@ -20,9 +20,10 @@ use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)
 // (1998)
 
+/// size of a block in bytes
 pub const BLOCK_SIZE: usize = 512;
 
-// Keep track of the last selected bus and drive pair to speed up operations
+/// Keep track of the last selected bus and drive pair to speed up operations
 pub static LAST_SELECTED: Mutex<Option<(u8, u8)>> = Mutex::new(None);
 
 #[repr(u16)]
@@ -54,6 +55,7 @@ enum Status {
     BSY = 7,  // Busy
 }
 
+/// Represents an ATA bus
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Bus {
@@ -77,6 +79,7 @@ pub struct Bus {
 }
 
 impl Bus {
+    /// Create a new ATA bus struct
     pub fn new(id: u8, io_base: u16, ctrl_base: u16, irq: u8) -> Self {
         Self {
             id,
@@ -299,15 +302,15 @@ impl Bus {
 }
 
 lazy_static! {
+    /// List of ATA buses
     pub static ref BUSES: Mutex<Vec<Bus>> = Mutex::new(Vec::new());
 }
 
+/// Initialize the ATA driver
 pub fn init() {
-    {
-        let mut buses = BUSES.lock();
-        buses.push(Bus::new(0, 0x1F0, 0x3F6, 14));
-        buses.push(Bus::new(1, 0x170, 0x376, 15));
-    }
+    let mut buses = BUSES.lock();
+    buses.push(Bus::new(0, 0x1F0, 0x3F6, 14));
+    buses.push(Bus::new(1, 0x170, 0x376, 15));
 
     for drive in list() {
         debug!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
@@ -326,9 +329,12 @@ pub fn init() {
     }
 }
 
+/// Represents an ATA drive
 #[derive(Clone, Debug)]
 pub struct Drive {
+    /// Bus number
     pub bus: u8,
+    /// Drive number
     pub dsk: u8,
     model: String,
     serial: String,
@@ -337,10 +343,12 @@ pub struct Drive {
 }
 
 impl Drive {
+    /// Get the size of a block in bytes
     pub fn size() -> usize {
         BLOCK_SIZE
     }
 
+    /// Open a drive
     pub fn open(bus: u8, dsk: u8) -> Option<Self> {
         let mut buses = BUSES.lock();
         let res = buses[bus as usize].identify_drive(dsk);
@@ -364,10 +372,12 @@ impl Drive {
         }
     }
 
+    /// Get the size of a block in bytes
     pub const fn block_size(&self) -> u32 {
         BLOCK_SIZE as u32
     }
 
+    /// Get the number of blocks
     pub fn block_count(&self) -> u32 {
         self.block_count
     }
@@ -391,6 +401,7 @@ impl fmt::Display for Drive {
     }
 }
 
+/// List all drives
 pub fn list() -> Vec<Drive> {
     let mut res = Vec::new();
     for bus in 0..2 {
@@ -403,16 +414,19 @@ pub fn list() -> Vec<Drive> {
     res
 }
 
+/// Read a block from a drive
 pub fn read(bus: u8, drive: u8, block: u32, buf: &mut [u8]) -> Result<(), ()> {
     let mut buses = BUSES.lock();
     buses[bus as usize].read(drive, block, buf)
 }
 
+/// Write a block to a drive
 pub fn write(bus: u8, drive: u8, block: u32, buf: &[u8]) -> Result<(), ()> {
     let mut buses = BUSES.lock();
     buses[bus as usize].write(drive, block, buf)
 }
 
+/// Get the most likely disk drive (ie. the one with the most blocks)
 pub fn likely_disk() -> Result<(u8, u8), ()> {
     let drives = list();
     if drives.len() == 0 {

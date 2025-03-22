@@ -30,7 +30,7 @@ use spin::Mutex;
 use crate::{
     internal::ata::{BLOCK_SIZE, read, write},
     internal::clk,
-    internal::file::{FileError, FileSystem, Stream},
+    internal::file::{FileError, FileSystem, Stream, FileFlags},
 };
 
 use alloc::{
@@ -41,12 +41,13 @@ use alloc::{
 };
 use hashbrown::HashMap;
 
-use super::file::FileFlags;
-
-pub const MAGIC_NUMER: u64 = 0x42371337;
+/// Magic number for our filesystem ("rustnix ")
+pub const MAGIC_NUMBER: u64 = 0x727573746e697820;
+/// Number of pointers in a block
 pub const POINTERS_PER_BLOCK: usize = BLOCK_SIZE / 8; // 8: size of u64
 
 lazy_static! {
+    /// list of filesystems
     pub static ref FILESYSTEMS: Mutex<HashMap<(usize, usize), VirtFs>> = Mutex::new(HashMap::new());
 }
 
@@ -73,12 +74,16 @@ struct Inode {
     file_name: [u8; 384],
 }
 
+
+/// A data block
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct DataBlock {
+    /// the data in the block
     pub data: [u8; 512],
 }
 
+/// Metadata for a file
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct FileMetadata {
@@ -89,10 +94,12 @@ pub struct FileMetadata {
     permissions: u64, // Unix-style
 }
 
+/// A physical filesystem
 #[derive(Debug, Clone)]
 pub struct PhysFs {
     superblock: Superblock,
     inode_table: Vec<Inode>,
+    /// the data blocks
     pub data_blocks: Vec<DataBlock>,
 }
 
@@ -115,25 +122,44 @@ impl default::Default for Inode {
     }
 }
 
+/// list of filesystem errors
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsError {
+    /// invalid path
     InvalidPath,
+    /// file not found
     FileNotFound,
+    /// file already exists
     FileExists,
+    /// disk is full
     DiskFull,
+    /// out of inodes
     OutOfInodes,
+    /// out of data blocks
     OutOfDataBlocks,
+    /// invalid inode
     InvalidInode,
+    /// invalid data block
     InvalidDataBlock,
+    /// invalid superblock
     InvalidSuperblock,
+    /// invalid inode table
     InvalidInodeTable,
+    /// invalid metadata
     InvalidMetadata,
+    /// write error
     WriteError,
+    /// read error
     ReadError,
+    /// file is unwritable
     UnwritableFile,
+    /// file is unreadable
     UnreadableFile,
+    /// filesystem not found
     FilesystemNotFound,
+    /// filesystem already exists
     FilesystemExists,
+    /// invalid file descriptor
     InvalidFileDescriptor,
 }
 
@@ -167,6 +193,7 @@ impl Display for FsError {
 }
 
 impl PhysFs {
+    /// allocate a new block
     pub fn allocate_block(&mut self, inode_index: usize, block_num: u64) {
         let mut inode = self.inode_table[inode_index];
         if block_num < 12 {
@@ -250,6 +277,7 @@ impl PhysFs {
         );
     }
 
+    /// get the block address for a given inode and block number
     pub fn get_block(&self, inode_index: usize, block_num: u64) -> u64 {
         let inode = &self.inode_table[inode_index];
         if block_num < 12 {
@@ -421,7 +449,7 @@ impl PhysFs {
             ),
         };
 
-        if superblock.magic_number != MAGIC_NUMER {
+        if superblock.magic_number != MAGIC_NUMBER {
             return Err(FsError::InvalidSuperblock);
         }
 
@@ -555,6 +583,7 @@ impl PhysFs {
         })
     }
 
+    /// write the filesystem to the disk
     pub fn write_to_disk(&self, bus: usize, device: usize) -> Result<(), FsError> {
         // write the superblock to the disk
         let mut sector_data = vec![0; BLOCK_SIZE];
@@ -979,6 +1008,7 @@ impl PhysFs {
 /// the exposed API for the filesystem, which implements File
 #[derive(Debug, Clone)]
 pub struct VirtFs {
+    /// the physical filesystem
     pub phys_fs: PhysFs,
     bus: usize,
     dsk: usize,
@@ -1013,7 +1043,7 @@ impl VirtFs {
             VirtFs {
                 phys_fs: PhysFs {
                     superblock: Superblock {
-                        magic_number: MAGIC_NUMER,
+                        magic_number: MAGIC_NUMBER,
                         disk_size,
                         inode_table_size: 1024,
                         data_block_size: 512,
@@ -1041,6 +1071,7 @@ impl VirtFs {
     }
 }
 
+/// the handle to a file, which implements Stream
 #[derive(Debug, Clone)]
 pub struct FileHandle {
     file_name: String,
@@ -1050,6 +1081,7 @@ pub struct FileHandle {
 }
 
 impl FileHandle {
+    /// create a new file handle with explicit bus and device
     pub fn new(file_name: String, bus: usize, dsk: usize, flags: u8) -> Self {
         FileHandle {
             file_name,
@@ -1059,6 +1091,7 @@ impl FileHandle {
         }
     }
 
+    /// create a new file handle with the likely filesystem
     pub fn new_with_likely_fs(file_name: String, flags: u8) -> Result<Self, FileError> {
         let file_systems = FILESYSTEMS.lock();
         for (key, fs) in file_systems.iter() {
@@ -1391,6 +1424,7 @@ impl FileSystem for VirtFs {
     }
 }
 
+/// get the selected filesystem as a mutable reference
 pub fn get_fs_mut(bus: usize, dsk: usize) -> Result<&'static mut VirtFs, FileError> {
     let mut file_systems = FILESYSTEMS.lock();
     let fs = file_systems
@@ -1400,16 +1434,17 @@ pub fn get_fs_mut(bus: usize, dsk: usize) -> Result<&'static mut VirtFs, FileErr
     Ok(Box::leak(Box::new(fs.clone())))
 }
 
+/// get the first good filesystem's bus and device
 pub fn get_first_good_fs() -> Result<(usize, usize), FileError> {
     let file_systems = FILESYSTEMS.lock();
     if let Some(((bus, dsk), _)) = file_systems.iter().next() {
-        // check is
         Ok((*bus, *dsk))
     } else {
         Err(FileError::NotFoundError(FsError::FilesystemNotFound.into()))
     }
 }
 
+/// add a filesystem to the list of filesystems
 pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), FileError> {
     let mut file_systems = FILESYSTEMS.lock();
     if file_systems.contains_key(&(bus, dsk)) {
@@ -1422,7 +1457,7 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
             VirtFs {
                 phys_fs: PhysFs {
                     superblock: Superblock {
-                        magic_number: MAGIC_NUMER,
+                        magic_number: MAGIC_NUMBER,
                         disk_size: size_of_new.unwrap() as u64,
                         inode_table_size: 1024,
                         data_block_size: 512,
@@ -1453,12 +1488,13 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
     }
 }
 
+/// test the creation of a file
 #[test_case]
 fn test_create_file() {
     let mut fs = VirtFs {
         phys_fs: PhysFs {
             superblock: Superblock {
-                magic_number: MAGIC_NUMER,
+                magic_number: MAGIC_NUMBER,
                 disk_size: 1024,
                 inode_table_size: 1024,
                 data_block_size: 512,
@@ -1491,12 +1527,13 @@ fn test_create_file() {
     FILESYSTEMS.lock().remove(&(0, 0));
 }
 
+/// test the writing of a file
 #[test_case]
 fn test_write_file() {
     let mut fs = VirtFs {
         phys_fs: PhysFs {
             superblock: Superblock {
-                magic_number: MAGIC_NUMER,
+                magic_number: MAGIC_NUMBER,
                 disk_size: 1024,
                 inode_table_size: 1024,
                 data_block_size: 512,
@@ -1543,12 +1580,13 @@ fn test_write_file() {
     FILESYSTEMS.lock().remove(&(0, 0));
 }
 
+/// test chmod
 #[test_case]
 fn test_chmod_file() {
     let mut fs = VirtFs {
         phys_fs: PhysFs {
             superblock: Superblock {
-                magic_number: MAGIC_NUMER,
+                magic_number: MAGIC_NUMBER,
                 disk_size: 1024,
                 inode_table_size: 1024,
                 data_block_size: 512,
@@ -1582,12 +1620,13 @@ fn test_chmod_file() {
     assert_eq!(perms, [1, 1, 1]);
 }
 
+/// test chown
 #[test_case]
 fn test_chown_file() {
     let mut fs = VirtFs {
         phys_fs: PhysFs {
             superblock: Superblock {
-                magic_number: MAGIC_NUMER,
+                magic_number: MAGIC_NUMBER,
                 disk_size: 1024,
                 inode_table_size: 1024,
                 data_block_size: 512,
@@ -1623,12 +1662,13 @@ fn test_chown_file() {
     FILESYSTEMS.lock().remove(&(0, 0));
 }
 
+/// test delete
 #[test_case]
 fn test_delete_file() {
     let mut fs = VirtFs {
         phys_fs: PhysFs {
             superblock: Superblock {
-                magic_number: MAGIC_NUMER,
+                magic_number: MAGIC_NUMBER,
                 disk_size: 1024,
                 inode_table_size: 1024,
                 data_block_size: 512,

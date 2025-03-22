@@ -13,12 +13,17 @@ use crate::internal::{
 
 use super::{console::Console, devices::null::Null, fs::FileHandle};
 
+/// File table
 pub static FILES: Mutex<BTreeMap<i8, File>> = Mutex::new(BTreeMap::new());
 
+/// Device
 #[derive(Debug)]
 pub enum Device {
+    /// Null device
     Null(Null),
+    /// Zero device
     Zero(Zero),
+    /// Random device
     Rand(Rand),
 }
 
@@ -36,10 +41,14 @@ impl TryFrom<(u8, u8)> for Device {
     }
 }
 
+/// a file, which could be a normal file, a stream, or a device
 #[derive(Debug)]
 pub enum File {
+    /// A normal file
     File(FileHandle),
+    /// A standard stream (stdin, stdout, stderr)
     StdStream(Console),
+    /// A device
     Device(Device),
 }
 

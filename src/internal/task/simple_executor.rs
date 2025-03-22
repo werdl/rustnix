@@ -1,17 +1,20 @@
 use super::Task;
 use alloc::collections::VecDeque;
 
+/// A simple executor that doesn't sleep when waiting for tasks
 pub struct SimpleExecutor {
     task_queue: VecDeque<Task>,
 }
 
 impl SimpleExecutor {
+    /// Create a new SimpleExecutor
     pub fn new() -> SimpleExecutor {
         SimpleExecutor {
             task_queue: VecDeque::new(),
         }
     }
 
+    /// Spawn a new task
     pub fn spawn(&mut self, task: Task) {
         self.task_queue.push_back(task);
     }
@@ -34,6 +37,7 @@ fn dummy_waker() -> Waker {
 }
 
 impl SimpleExecutor {
+    /// Run the executor
     pub fn run(&mut self) {
         while let Some(mut task) = self.task_queue.pop_front() {
             let waker = dummy_waker();

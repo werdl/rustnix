@@ -7,9 +7,13 @@ use x86_64::instructions::port::Port;
 
 use super::console::handle_key;
 
+/// has the control key been pressed
 pub static CTRL: AtomicBool = AtomicBool::new(false);
+/// has the alt key been pressed
 pub static ALT: AtomicBool = AtomicBool::new(false);
+/// has the shift key been pressed
 pub static SHIFT: AtomicBool = AtomicBool::new(false);
+/// has the caps lock key been pressed
 pub static CAPS: AtomicBool = AtomicBool::new(false);
 
 fn read_scancode() -> u8 {
@@ -71,6 +75,7 @@ fn interrupt_handler() {
     }
 }
 
+/// Initialize the keyboard
 pub fn init() {
     crate::internal::interrupts::set_irq_handler(1, interrupt_handler);
 }

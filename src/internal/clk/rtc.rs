@@ -17,6 +17,7 @@ fn bcd_to_binary(value: u8) -> u8 {
     (value & 0x0F) + ((value / 16) * 10)
 }
 
+/// Read the current date and time from the RTC
 pub fn read_rtc() -> (u8, u8, u8, u8, u8, u8) {
     let second = read_rtc_register(0x00);
     let minute = read_rtc_register(0x02);

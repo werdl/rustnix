@@ -3,8 +3,10 @@ use crate::internal::{
     fs::FsError,
 };
 
+/// Zero device
 #[derive(Debug)]
 pub struct Zero {
+    /// File flags
     pub flags: u8,
 }
 
@@ -49,11 +51,13 @@ impl Stream for Zero {
 }
 
 impl Zero {
+    /// Create a new zero device
     pub fn new(flags: u8) -> Self {
         Zero { flags }
     }
 }
 
+/// Test the zero device
 #[test_case]
 fn test_zero() {
     let mut zero = Zero::new(FileFlags::Read | FileFlags::Write);

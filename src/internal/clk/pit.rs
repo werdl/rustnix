@@ -10,11 +10,13 @@ use x86_64::instructions::interrupts as x86_interrupts;
 // between ticks to improve time measurements accuracy.
 const PIT_FREQUENCY: f64 = 3_579_545.0 / 3.0; // 1_193_181.666 Hz
 const PIT_DIVIDER: u16 = 1193;
+/// Interval between PIT ticks in seconds
 pub const PIT_INTERVAL: f64 = (PIT_DIVIDER as f64) / PIT_FREQUENCY;
 
 static PIT_TICKS: AtomicUsize = AtomicUsize::new(0);
 static TSC_FREQUENCY: AtomicU64 = AtomicU64::new(0);
 
+/// Initialize the PIT
 pub fn init() {
     unsafe {
         let mut port = Port::new(0x43);
@@ -34,18 +36,21 @@ fn pit_handler() {
     PIT_TICKS.fetch_add(1, Ordering::SeqCst);
 }
 
+/// Get the current TSC value
 pub fn get_tsc() -> u64 {
     unsafe {
-        core::arch::x86_64::_mm_lfence();
-        core::arch::x86_64::_rdtsc()
+        core::arch::x86_64::_mm_lfence(); // prevent instruction reordering
+        core::arch::x86_64::_rdtsc() // do the actual read
     }
 }
 
+/// Get the number of PIT ticks since boot
 pub fn get_ticks() -> usize {
     PIT_TICKS.load(Ordering::Relaxed)
 }
 
-pub fn get_unix_time_ns() -> u64 {
+/// Get the current time since boot in nanoseconds
+pub fn get_boot_time_ns() -> u64 {
     let ticks = get_ticks() as f64;
     let tsc = get_tsc() as f64;
     let tsc_freq = TSC_FREQUENCY.load(Ordering::Relaxed) as f64;
@@ -54,6 +59,7 @@ pub fn get_unix_time_ns() -> u64 {
     nanos + (seconds * 1_000_000_000.0) as u64
 }
 
+/// Sleep for a given number of seconds (based on PIT)
 pub fn sleep(seconds: f64) {
     let start = get_ticks();
     let ticks = (seconds) / PIT_INTERVAL;
@@ -62,6 +68,7 @@ pub fn sleep(seconds: f64) {
     }
 }
 
+/// Calibrate the TSC frequency
 pub fn calibrate_tsc() {
     let start = get_tsc();
     sleep(1.0);
@@ -69,6 +76,7 @@ pub fn calibrate_tsc() {
     TSC_FREQUENCY.store(end - start, Ordering::Relaxed);
 }
 
+/// Wait for a given number of nanoseconds (based on TSC)
 pub fn wait(ns: u64) {
     let start = get_tsc();
     let tsc_freq = TSC_FREQUENCY.load(Ordering::Relaxed) as f64;
@@ -78,6 +86,7 @@ pub fn wait(ns: u64) {
     }
 }
 
+/// Halt the CPU
 pub fn hlt() {
     let disabled = !x86_interrupts::are_enabled();
     x86_interrupts::enable_and_hlt();
