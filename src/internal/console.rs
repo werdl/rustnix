@@ -151,4 +151,8 @@ impl Stream for Console {
     fn poll(&mut self, _event: crate::internal::file::IOEvent) -> bool {
         true
     }
+
+    fn seek(&mut self, pos: usize) -> Result<usize, crate::internal::file::FileError> {
+        Ok(pos)
+    }
 }

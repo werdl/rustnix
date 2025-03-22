@@ -19,4 +19,4 @@ disk_image="target/x86_64-rustnix/debug/disk.img"
 dd if=/dev/zero of=$disk_image bs=1M count=64
 
 # Run QEMU with the kernel binary and the disk image as a second drive
-qemu-system-x86_64 -drive file=$kernel,format=raw -drive file=$disk_image,format=raw -serial stdio
+qemu-system-x86_64 -drive file=$kernel,format=raw  -drive file=$disk_image,format=raw -serial stdio

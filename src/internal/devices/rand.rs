@@ -61,6 +61,11 @@ impl Stream for Rand {
             crate::internal::file::IOEvent::Write => self.flags & (FileFlags::Read as u8) != 0,
         }
     }
+
+    fn seek(&mut self, pos: usize) -> Result<usize, crate::internal::file::FileError> {
+        // Seek is a no-op for the random device
+        Ok(pos)
+    }
 }
 
 impl Rand {

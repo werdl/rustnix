@@ -10,7 +10,7 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
-use internal::{ata, clk, gdt, interrupts, keyboard, memory, vga};
+use internal::{ata, clk, gdt, interrupts, keyboard, memory, syscall, vga};
 
 use core::panic::PanicInfo;
 
@@ -136,6 +136,9 @@ pub fn init(boot_info: &'static BootInfo) {
     info!("Logger initialized");
     info!("Memory initialized");
 
+    // syscall::init();
+    // info!("Syscalls initialized");
+
     keyboard::init();
     info!("Console initialized");
 
@@ -149,11 +152,11 @@ pub fn init(boot_info: &'static BootInfo) {
     x86_64::instructions::interrupts::enable();
     info!("Interrupts enabled");
 
-    ata::init();
-    info!("ATA initialized");
-
     clk::pit::init();
     info!("PIT initialized");
+
+    ata::init();
+    info!("ATA initialized");
 
     info!("Kernel initialized");
 }

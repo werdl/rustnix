@@ -52,6 +52,11 @@ impl Stream for Null {
             crate::internal::file::IOEvent::Write => self.inner.poll(event),
         }
     }
+
+    fn seek(&mut self, pos: usize) -> Result<usize, crate::internal::file::FileError> {
+        // Seek is a no-op for the null device
+        Ok(pos)
+    }
 }
 
 /// Test the null device

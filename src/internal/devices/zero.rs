@@ -48,6 +48,11 @@ impl Stream for Zero {
             crate::internal::file::IOEvent::Write => !(self.flags & (FileFlags::Write as u8) != 0),
         }
     }
+
+    fn seek(&mut self, pos: usize) -> Result<usize, crate::internal::file::FileError> {
+        // Seek is a no-op for the zero device
+        Ok(pos)
+    }
 }
 
 impl Zero {

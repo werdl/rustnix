@@ -1,13 +1,14 @@
 use alloc::string::ToString;
+use log::warn;
 use spin::Mutex;
 
 use crate::internal::{
-    console::Console,
-    devices::{null::Null, rand::Rand, zero::Zero},
     file::Stream,
     fs::{FileHandle, FsError},
     io::{Device, FILES, File},
 };
+
+use super::{file, io};
 
 /// Error number of the last error
 pub static ERRNO: Mutex<u8> = Mutex::new(0);
@@ -150,26 +151,50 @@ fn test_alloc_free() {
     free(heap_value, 1024);
 }
 
+/// initialize the syscall interface (currently just initializes block devices)
+pub fn init() {
+    // initialize all block devices (ie. pop a fd into FILES for each block device)
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let mut files = FILES.lock();
+
+        for i in 0..io::NUM_DEVICES {
+            let device = Device::try_from((i as u8, 0)).unwrap();
+            files.insert(i as i8, File::Device(device));
+        }
+    });
+}
+
+/// device path should be something like "/dev/sda" NOT "sda"
+fn open_block_device(device_path: &str) -> i8 {
+    match device_path {
+        "/dev/stdin" => io::STDIN as i8,
+        "/dev/stdout" => io::STDOUT as i8,
+        "/dev/stderr" => io::STDERR as i8,
+        "/dev/null" => io::NULL as i8,
+        "/dev/zero" => io::ZERO as i8,
+        "/dev/random" => io::RAND as i8,
+        _ => {
+            warn!("Unknown device: {}, failing OPEN", device_path);
+            -1
+        }
+    }
+}
+
 /// open a file (OPEN)
 pub fn open(path: &str, flags: u8) -> i8 {
-    let resource = match path {
-        "/dev/null" => File::Device(Device::Null(Null::new(flags))),
-        "/dev/zero" => File::Device(Device::Zero(Zero::new(flags))),
-        "/dev/random" => File::Device(Device::Rand(Rand::new(flags))),
-        "/dev/stdin" => File::StdStream(Console::new()),
-        "/dev/stdout" => File::StdStream(Console::new()),
-        "/dev/stderr" => File::StdStream(Console::new()),
-        _ => {
-            // assume it's a file
-            let file_handle = FileHandle::new_with_likely_fs(path.to_string(), flags);
+    let path = &file::absolute_path(path);
+    if path.starts_with("/dev/") {
+        return open_block_device(path);
+    }
 
-            if file_handle.is_err() {
-                set_errno(file_handle.unwrap_err().into());
-                return -1;
-            }
-            File::File(file_handle.unwrap())
-        }
-    };
+    let file_handle = FileHandle::new_with_likely_fs(path.to_string(), flags);
+
+    if file_handle.is_err() {
+        set_errno(file_handle.unwrap_err().into());
+        return -1;
+    }
+
+    let resource = File::File(file_handle.unwrap());
 
     let mut files = FILES.lock();
 

@@ -159,6 +159,9 @@ pub trait Stream {
 
     /// poll the file for read readiness
     fn poll(&mut self, event: IOEvent) -> bool;
+
+    /// seek to a position in the file
+    fn seek(&mut self, pos: usize) -> Result<usize, FileError>;
 }
 
 /// FileFlags is an enum that contains the possible flags that can be set when opening a file

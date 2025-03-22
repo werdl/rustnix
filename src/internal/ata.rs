@@ -312,6 +312,7 @@ pub fn init() {
     buses.push(Bus::new(0, 0x1F0, 0x3F6, 14));
     buses.push(Bus::new(1, 0x170, 0x376, 15));
 
+
     for drive in list() {
         debug!("ATA {}:{} {}", drive.bus, drive.dsk, drive);
     }

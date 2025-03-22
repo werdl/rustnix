@@ -1078,6 +1078,7 @@ pub struct FileHandle {
     bus: usize,
     dsk: usize,
     flags: u8,
+    file_pos: usize,
 }
 
 impl FileHandle {
@@ -1088,6 +1089,7 @@ impl FileHandle {
             bus,
             dsk,
             flags,
+            file_pos: 0
         }
     }
 
@@ -1101,6 +1103,7 @@ impl FileHandle {
                     bus: key.0,
                     dsk: key.1,
                     flags,
+                    file_pos: 0,
                 });
             }
         }
@@ -1122,11 +1125,15 @@ impl Stream for FileHandle {
 
         let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
 
-        // we know data will be a multiple of 512 bytes
-        let len = buf.len().min(data.len());
-        buf[..len].copy_from_slice(&data[..len]);
+        if self.file_pos >= data.len() {
+            return Ok(0); // EOF
+        }
 
-        Ok(data.len())
+        let len = buf.len().min(data.len() - self.file_pos);
+        buf[..len].copy_from_slice(&data[self.file_pos..self.file_pos + len]);
+        self.file_pos += len;
+
+        Ok(len)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, FileError> {
@@ -1139,7 +1146,20 @@ impl Stream for FileHandle {
             return Err(FileError::PermissionError(FsError::WriteError.into()));
         }
 
-        fs.phys_fs.write_file(&self.file_name, buf, None, None)?;
+        let (mut data, _) = fs.phys_fs.read_file(&self.file_name)?;
+
+        if self.file_pos > data.len() {
+            data.resize(self.file_pos, 0); // Pad with zeros if seeking beyond EOF
+        }
+
+        if self.file_pos + buf.len() > data.len() {
+            data.resize(self.file_pos + buf.len(), 0);
+        }
+
+        data[self.file_pos..self.file_pos + buf.len()].copy_from_slice(buf);
+        fs.phys_fs.write_file(&self.file_name, &data, None, None)?;
+
+        self.file_pos += buf.len();
         Ok(buf.len())
     }
 
@@ -1167,6 +1187,11 @@ impl Stream for FileHandle {
             super::file::IOEvent::Write => !(self.flags & (FileFlags::Write as u8) != 0),
         }
     }
+
+    fn seek(&mut self, pos: usize) -> Result<usize, FileError> {
+        self.file_pos = pos;
+        Ok(pos)
+    }
 }
 
 impl FileSystem for VirtFs {
@@ -1184,12 +1209,20 @@ impl FileSystem for VirtFs {
             }
         }
 
-        let file_handle = FileHandle {
+        // if the append flag is set, seek to the end of the file
+        let mut file_handle = FileHandle {
             file_name: path.to_string(),
             bus: self.bus,
             dsk: self.dsk,
             flags,
+            file_pos: 0,
         };
+
+        if flags & (FileFlags::Append as u8) != 0 {
+            let (data, _) = fs.phys_fs.read_file(path)?;
+            file_handle.file_pos = data.len();
+        }
+
         Ok(Box::new(file_handle))
     }
 
