@@ -6,6 +6,8 @@ use pc_keyboard::{
 };
 use x86_64::instructions::port::Port;
 
+use crate::system_msg;
+
 use super::console::handle_key;
 
 /// has the control key been pressed
@@ -51,13 +53,9 @@ fn interrupt_handler() {
         let is_ctrl = CTRL.load(ord);
         let is_shift = SHIFT.load(ord);
 
+
         if let Some(key) = kb.process_keyevent(event) {
             match key {
-                // if ctrl-alt-del, reboot
-                DecodedKey::RawKey(KeyCode::Delete) if is_ctrl && is_alt => {
-                    // TODO: implement ACPI
-                }
-
                 DecodedKey::RawKey(KeyCode::PageUp) => handle_csi("5~"),
                 DecodedKey::RawKey(KeyCode::PageDown) => handle_csi("6~"),
                 DecodedKey::RawKey(KeyCode::ArrowUp) => handle_csi("A"),
@@ -68,9 +66,17 @@ fn interrupt_handler() {
                 // Convert Shift-Tab into Backtab
                 DecodedKey::Unicode('\t') if is_shift => handle_csi("Z"),
 
-                DecodedKey::Unicode(c) => handle_key(c),
+                DecodedKey::Unicode(c) => {
+                    if is_ctrl && is_alt && c =='\x08' { // Ctrl-Alt-Backspace, as delete is not supported by qemu (maps to 46 for some reasons)
+                        system_msg!("Rebooting...");
+                        crate::internal::syscall::stop(1);
+                    }
+                    handle_key(c);
+                },
 
-                _ => {}
+                _ => {
+                    trace!("Unhandled key: {:?}", key);
+                }
             }
         }
     }

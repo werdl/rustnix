@@ -1,5 +1,7 @@
 #![warn(missing_docs)]
 
+/// acpi module, handles acpi tables (basically allows shutdown and logs some system info)
+pub mod acpi;
 /// allocator module, handles heap allocation
 pub mod allocator;
 /// ata module, handles ata devices

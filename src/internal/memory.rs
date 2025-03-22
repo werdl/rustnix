@@ -1,6 +1,11 @@
 use log::trace;
+use spin::Once;
+use x86_64::structures::paging::page_table::FrameError;
 use x86_64::structures::paging::{OffsetPageTable, PageTable};
 use x86_64::{PhysAddr, VirtAddr};
+
+/// The offset of the physical memory
+static PHYSICAL_MEMORY_OFFSET: Once<u64> = Once::new(); // will get overwritten by init
 
 unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
@@ -13,13 +18,19 @@ unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut
 }
 
 /// Translates the given virtual address to the mapped physical address
-pub unsafe fn translate_addr(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Option<PhysAddr> {
-    translate_addr_inner(addr, physical_memory_offset)
+pub unsafe fn translate_addr(addr: VirtAddr) -> Option<PhysAddr> {
+    translate_addr_inner(
+        addr,
+        VirtAddr::new(*PHYSICAL_MEMORY_OFFSET.call_once(|| addr.as_u64())),
+    )
+}
+
+/// Translates the given physical address to the virtual address
+pub fn reverse_translate(addr: PhysAddr) -> VirtAddr {
+    VirtAddr::new(addr.as_u64() + *PHYSICAL_MEMORY_OFFSET.call_once(|| addr.as_u64()))
 }
 
 fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Option<PhysAddr> {
-    use x86_64::structures::paging::page_table::FrameError;
-
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
     let table_indexes = [
         addr.p4_index(),
@@ -50,6 +61,8 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
 }
 
 unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+    let _ = *PHYSICAL_MEMORY_OFFSET.call_once(|| physical_memory_offset.as_u64());
+
     let level_4_table = unsafe { active_level_4_table(physical_memory_offset) };
 
     unsafe { OffsetPageTable::new(level_4_table, physical_memory_offset) }

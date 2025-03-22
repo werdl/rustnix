@@ -9,9 +9,6 @@ extern crate alloc;
 use core::panic::PanicInfo;
 
 use bootloader::{BootInfo, entry_point};
-use rustnix::internal::{
-    file::FileFlags, syscall
-};
 #[allow(unused_imports)]
 use rustnix::kprintln;
 
@@ -35,13 +32,6 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
-    let mut buf = [0u8; 5];
-
-    let file = syscall::open("/dev/stdin", FileFlags::Read as u8);
-
-    let _ = syscall::read(file as u8, &mut buf);
-
-    kprintln!("\nData read from /dev/stdin: {:?}", buf);
 
     loop {}
 

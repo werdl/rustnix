@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+acpi = "5.2.0"
+aml = "0.16.4"
 bit_field = "0.10.2"
 bitflags = { version = "2", default-features = false }
 bootloader = { version = "0.9.0", features = ["map_physical_memory"] }

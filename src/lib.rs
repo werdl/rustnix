@@ -10,7 +10,7 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
-use internal::{ata, clk, gdt, interrupts, keyboard, memory, syscall, vga};
+use internal::{ata, clk, gdt, interrupts, keyboard, memory, syscall, vga, acpi};
 
 use core::panic::PanicInfo;
 
@@ -158,6 +158,9 @@ fn write_str_rainbow(s: &str) {
     let mut fg = Color::Red;
     for c in s.chars() {
         crate::vga::write_char(c, fg, Color::Black);
+        if c == '\n' || c == ' ' {
+            continue;
+        }
         fg = match fg {
             Color::Red => Color::LightRed,
             Color::LightRed => Color::Yellow,
@@ -172,11 +175,13 @@ fn write_str_rainbow(s: &str) {
 }
 
 pub fn init(boot_info: &'static BootInfo) {
+    system_msg!("Initializing kernel...");
     kprint!("[ ");
     vga::write_str("INFO", Color::LightBlue, Color::Black);
     kprint!(" ] Initializing memory...\n");
     memory::init(boot_info);
     init_logger();
+
     info!("Logger initialized");
     info!("Memory initialized");
 
@@ -201,7 +206,10 @@ pub fn init(boot_info: &'static BootInfo) {
     ata::init();
     info!("ATA initialized");
 
-    info!("Kernel initialized");
+    acpi::init();
+    info!("ACPI initialized");
+
+    system_msg!("Kernel initialized");
 
     #[cfg(feature = "ascii-art")]
     {

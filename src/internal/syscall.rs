@@ -1,3 +1,5 @@
+use core::arch::asm;
+
 use alloc::string::ToString;
 use log::{trace, warn};
 use spin::Mutex;
@@ -213,7 +215,9 @@ pub fn write(fd: u8, buf: &[u8]) -> Result<usize, crate::internal::file::FileErr
 
     match resource {
         Some(resource) => resource.write(buf),
-        None => Err(crate::internal::file::FileError::WriteError(FsError::InvalidFileDescriptor.into())),
+        None => Err(crate::internal::file::FileError::WriteError(
+            FsError::InvalidFileDescriptor.into(),
+        )),
     }
 }
 
@@ -225,7 +229,9 @@ pub fn read(fd: u8, buf: &mut [u8]) -> Result<usize, crate::internal::file::File
 
     match resource {
         Some(resource) => resource.read(buf),
-        None => Err(crate::internal::file::FileError::ReadError(FsError::InvalidFileDescriptor.into())),
+        None => Err(crate::internal::file::FileError::ReadError(
+            FsError::InvalidFileDescriptor.into(),
+        )),
     }
 }
 
@@ -237,7 +243,8 @@ pub fn close(fd: u8) -> Result<(), crate::internal::file::FileError> {
 
     match resource {
         Some(mut resource) => resource.close(),
-        None => Err(crate::internal::file::FileError::CloseError(FsError::InvalidFileDescriptor.into(),
+        None => Err(crate::internal::file::FileError::CloseError(
+            FsError::InvalidFileDescriptor.into(),
         )),
     }
 }
@@ -250,7 +257,23 @@ pub fn flush(fd: u8) -> Result<(), crate::internal::file::FileError> {
 
     match resource {
         Some(resource) => resource.flush(),
-        None => Err(crate::internal::file::FileError::FlushError(FsError::InvalidFileDescriptor.into(),
+        None => Err(crate::internal::file::FileError::FlushError(
+            FsError::InvalidFileDescriptor.into(),
         )),
     }
+}
+
+/// stop the system (STOP)
+pub fn stop(stop_type: u8) -> i8 {
+    match stop_type {
+        0 => crate::internal::acpi::shutdown(),
+        1 => unsafe { asm!("xor rax, rax", "mov cr3, rax") },
+        _ => {
+            warn!("Unknown stop type: {}", stop_type);
+            set_errno(Error::EINVAL);
+            return -1;
+        }
+    }
+
+    return 0;
 }

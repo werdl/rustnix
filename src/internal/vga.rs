@@ -6,7 +6,7 @@ use core::fmt;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
-use x86_64::instructions::{interrupts, port::Port};
+use x86_64::instructions::interrupts;
 
 #[allow(dead_code)]
 #[allow(missing_docs)] // no need to document this, only colours
@@ -140,6 +140,7 @@ impl VgaWriter {
         for c in s.chars() {
             match c as u8 {
                 b'\n' => self.write_byte(b'\n'),
+                0x08 => self.write_byte(0x08),
                 0x20..=0x7e => self.write_byte(c as u8),
                 _ => self.write_byte(0xfe), // ■ for unsupported characters
             }
@@ -257,4 +258,15 @@ fn test_kprintln_output() {
             assert_eq!(char::from(screen_char.ascii_char), c);
         }
     });
+}
+
+/// print a message to the VGA buffer, systemd style
+#[macro_export]
+macro_rules! system_msg {
+    ($($arg:tt)*) => {
+        crate::kprint!("[");
+        crate::internal::vga::write_str("SYSTEM", crate::internal::vga::Color::Green, crate::internal::vga::Color::Black);
+        crate::kprint!("] ");
+        crate::kprintln!($($arg)*);
+    };
 }
