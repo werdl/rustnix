@@ -4,17 +4,17 @@
     The original code from this section can be found at: https://github.com/vinc/moros/blob/trunk/src/sys/ata.rs
 */
 
-use alloc::{borrow::ToOwned, string::String};
+use crate::internal::clk;
 use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, string::String};
 use bit_field::BitField;
-use log::{debug, error, info, trace, warn};
 use core::convert::TryInto;
 use core::fmt;
 use core::hint::spin_loop;
 use lazy_static::lazy_static;
+use log::{debug, error, info, trace, warn};
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
-use crate::internal::clk;
 
 // Information Technology
 // AT Attachment with Packet Interface Extension (ATA/ATAPI-4)
@@ -28,8 +28,8 @@ pub static LAST_SELECTED: Mutex<Option<(u8, u8)>> = Mutex::new(None);
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
 enum Command {
-    Read     = 0x20,
-    Write    = 0x30,
+    Read = 0x20,
+    Write = 0x30,
     Identify = 0xEC,
 }
 
@@ -44,14 +44,14 @@ enum IdentifyResponse {
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
 enum Status {
-    ERR  = 0, // Error
-    IDX  = 1, // (obsolete)
+    ERR = 0,  // Error
+    IDX = 1,  // (obsolete)
     CORR = 2, // (obsolete)
-    DRQ  = 3, // Data Request
-    DSC  = 4, // (command dependant)
-    DF   = 5, // (command dependant)
+    DRQ = 3,  // Data Request
+    DSC = 4,  // (command dependant)
+    DF = 5,   // (command dependant)
     DRDY = 6, // Device Ready
-    BSY  = 7, // Busy
+    BSY = 7,  // Busy
 }
 
 #[allow(dead_code)]
@@ -141,10 +141,7 @@ impl Bus {
         let start = clk::get_time_since_boot();
         while self.status().get_bit(bit as usize) != val {
             if clk::get_time_since_boot() - start > 1.0 {
-                error!(
-                    "ATA hanged while polling {:?} bit in status register",
-                    bit
-                );
+                error!("ATA hanged while polling {:?} bit in status register", bit);
                 self.debug();
                 return Err(());
             }
@@ -179,11 +176,7 @@ impl Bus {
         Ok(())
     }
 
-    fn write_command_params(
-        &mut self,
-        drive: u8,
-        block: u32
-    ) -> Result<(), ()> {
+    fn write_command_params(&mut self, drive: u8, block: u32) -> Result<(), ()> {
         let lba = true;
         let mut bytes = block.to_le_bytes();
         bytes[3].set_bit(4, drive > 0);
@@ -205,7 +198,8 @@ impl Bus {
         self.wait(400); // Wait at least 400 ns
         self.status(); // Ignore results of first read
         self.clear_interrupt();
-        if self.status() == 0 { // Drive does not exist
+        if self.status() == 0 {
+            // Drive does not exist
             return Err(());
         }
         if self.is_error() {
@@ -224,12 +218,7 @@ impl Bus {
         Ok(())
     }
 
-    fn read(
-        &mut self,
-        drive: u8,
-        block: u32,
-        buf: &mut [u8]
-    ) -> Result<(), ()> {
+    fn read(&mut self, drive: u8, block: u32, buf: &mut [u8]) -> Result<(), ()> {
         assert!(buf.len() == BLOCK_SIZE);
         self.setup_pio(drive, block)?;
         self.write_command(Command::Read)?;
@@ -277,9 +266,7 @@ impl Bus {
             }
         }
         match (self.lba1(), self.lba2()) {
-            (0x00, 0x00) => {
-                Ok(IdentifyResponse::Ata([(); 256].map(|_| self.read_data())))
-            }
+            (0x00, 0x00) => Ok(IdentifyResponse::Ata([(); 256].map(|_| self.read_data()))),
             (0x14, 0xEB) => Ok(IdentifyResponse::Atapi),
             (0x3C, 0xC3) => Ok(IdentifyResponse::Sata),
             (_, _) => Err(()),
@@ -328,7 +315,12 @@ pub fn init() {
 
     // print probable disk
     if let Ok((bus, dsk)) = likely_disk() {
-        info!("Probable disk: {}:{} {}", bus, dsk, Drive::open(bus, dsk).unwrap());
+        info!(
+            "Probable disk: {}:{} {}",
+            bus,
+            dsk,
+            Drive::open(bus, dsk).unwrap()
+        );
     } else {
         warn!("No disk found");
     }
@@ -356,9 +348,7 @@ impl Drive {
             let buf = res.map(u16::to_be_bytes).concat();
             let model = String::from_utf8_lossy(&buf[54..94]).trim().into();
             let serial = String::from_utf8_lossy(&buf[20..40]).trim().into();
-            let block_count = u32::from_be_bytes(
-                buf[120..124].try_into().unwrap()
-            ).rotate_left(16);
+            let block_count = u32::from_be_bytes(buf[120..124].try_into().unwrap()).rotate_left(16);
             let block_index = 0;
 
             Some(Self {

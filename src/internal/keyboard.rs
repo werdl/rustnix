@@ -1,6 +1,8 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use pc_keyboard::{layouts::Uk105Key, DecodedKey, HandleControl, KeyCode, KeyState, Keyboard, ScancodeSet1};
+use pc_keyboard::{
+    DecodedKey, HandleControl, KeyCode, KeyState, Keyboard, ScancodeSet1, layouts::Uk105Key,
+};
 use x86_64::instructions::port::Port;
 
 use super::console::handle_key;
@@ -46,6 +48,11 @@ fn interrupt_handler() {
 
         if let Some(key) = kb.process_keyevent(event) {
             match key {
+                // if ctrl-alt-del, reboot
+                DecodedKey::RawKey(KeyCode::Delete) if is_ctrl && is_alt => {
+                    // TODO: implement ACPI
+                }
+
                 DecodedKey::RawKey(KeyCode::PageUp) => handle_csi("5~"),
                 DecodedKey::RawKey(KeyCode::PageDown) => handle_csi("6~"),
                 DecodedKey::RawKey(KeyCode::ArrowUp) => handle_csi("A"),

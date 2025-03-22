@@ -17,7 +17,7 @@ impl SimpleExecutor {
     }
 }
 
-use core::task::{Context, Poll, Waker, RawWaker, RawWakerVTable};
+use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 fn dummy_raw_waker() -> RawWaker {
     fn no_op(_: *const ()) {}

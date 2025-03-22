@@ -1,24 +1,19 @@
 use alloc::{
     collections::BTreeMap,
     format,
-    string::{String, ToString},
-    vec::Vec,
+    string::String,
 };
-use lazy_static::lazy_static;
-use log::{debug, trace};
+
 use spin::Mutex;
 
 use crate::internal::{
-    ata,
     devices::{rand::Rand, zero::Zero},
     file::Stream,
-    file::{self, FileSystem},
-    fs::{self, FileMetadata},
 };
 
-use super::{console::Console, devices::null::Null, file::FileFlags, fs::FileHandle};
+use super::{console::Console, devices::null::Null, fs::FileHandle};
 
-pub static FILES: Mutex<BTreeMap<u8, File>> = Mutex::new(BTreeMap::new());
+pub static FILES: Mutex<BTreeMap<i8, File>> = Mutex::new(BTreeMap::new());
 
 #[derive(Debug)]
 pub enum Device {
@@ -27,6 +22,7 @@ pub enum Device {
     Rand(Rand),
 }
 
+/// (device number, flags)
 impl TryFrom<(u8, u8)> for Device {
     type Error = String;
 
@@ -128,89 +124,5 @@ impl Stream for File {
             File::StdStream(stream) => stream.poll(event),
             File::Device(device) => device.poll(event),
         }
-    }
-}
-
-pub fn open(path: &str, flags: u8) -> u8 {
-    let resource = match path {
-        "/dev/null" => File::Device(Device::Null(Null::new(flags))),
-        "/dev/zero" => File::Device(Device::Zero(Zero::new(flags))),
-        "/dev/random" => File::Device(Device::Rand(Rand::new(flags))),
-        "/dev/stdin" => File::StdStream(Console::new()),
-        "/dev/stdout" => File::StdStream(Console::new()),
-        "/dev/stderr" => File::StdStream(Console::new()),
-        _ => {
-            // assume it's a file
-            let file_handle = FileHandle::new_with_likely_fs(path.to_string(), flags);
-
-            if file_handle.is_err() {
-                return 0;
-            }
-            File::File(file_handle.unwrap())
-        }
-    };
-
-    let mut files = FILES.lock();
-
-    let fd = files.len() as u8 + 1;
-
-    files.insert(fd, resource);
-    fd
-}
-
-pub fn write(fd: u8, buf: &[u8]) -> Result<usize, super::file::FileError> {
-    let mut files = FILES.lock();
-
-    let resource: Option<&mut File> = files.get_mut(&fd);
-
-    match resource {
-        Some(resource) => resource.write(buf),
-        None => Err(super::file::FileError::WriteError(format!(
-            "Invalid file descriptor: {}",
-            fd
-        ))),
-    }
-}
-
-pub fn read(fd: u8, buf: &mut [u8]) -> Result<usize, super::file::FileError> {
-    let mut files = FILES.lock();
-
-    let resource: Option<&mut File> = files.get_mut(&fd);
-
-    match resource {
-        Some(resource) => resource.read(buf),
-        None => Err(super::file::FileError::ReadError(format!(
-            "Invalid file descriptor: {}",
-            fd
-        ))),
-    }
-}
-
-pub fn close(fd: u8) -> Result<(), super::file::FileError> {
-    let mut files = FILES.lock();
-
-    let resource: Option<File> = files.remove(&fd);
-
-
-    match resource {
-        Some(mut resource) => resource.close(),
-        None => Err(super::file::FileError::CloseError(format!(
-            "Invalid file descriptor: {}",
-            fd
-        ))),
-    }
-}
-
-pub fn flush(fd: u8) -> Result<(), super::file::FileError> {
-    let mut files = FILES.lock();
-
-    let resource: Option<&mut File> = files.get_mut(&fd);
-
-    match resource {
-        Some(resource) => resource.flush(),
-        None => Err(super::file::FileError::FlushError(format!(
-            "Invalid file descriptor: {}",
-            fd
-        ))),
     }
 }

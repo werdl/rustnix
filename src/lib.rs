@@ -9,12 +9,12 @@ pub use core::prelude::rust_2024::*;
 
 extern crate alloc;
 pub mod internal;
-use internal::{ata, clk, console, gdt, interrupts, keyboard, memory, vga};
+use internal::{ata, clk, gdt, interrupts, keyboard, memory, vga};
 
 use core::panic::PanicInfo;
 
 #[allow(unused_imports)]
-use bootloader::{entry_point, BootInfo};
+use bootloader::{BootInfo, entry_point};
 use internal::vga::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,8 +63,8 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-use log::{info, Level, Metadata, Record};
 use alloc::format;
+use log::{Level, Metadata, Record, info};
 
 // Example: A custom logger that writes logs to a serial port.
 pub struct SerialLogger;
@@ -112,7 +112,6 @@ impl log::Log for SerialLogger {
             }
 
             kprint!("] {}\n", message);
-
         }
     }
 
@@ -127,7 +126,6 @@ pub fn init_logger() {
         .unwrap();
 }
 
-
 pub fn init(boot_info: &'static BootInfo) {
     kprint!("[ ");
     vga::write_str("INFO", Color::LightBlue, Color::Black);
@@ -140,7 +138,6 @@ pub fn init(boot_info: &'static BootInfo) {
     keyboard::init();
     info!("Console initialized");
 
-
     gdt::init();
     info!("GDT initialized");
 
@@ -150,8 +147,6 @@ pub fn init(boot_info: &'static BootInfo) {
     unsafe { interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
     info!("Interrupts enabled");
-
-
 
     ata::init();
     info!("ATA initialized");

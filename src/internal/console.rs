@@ -6,7 +6,7 @@ use x86_64::instructions::interrupts;
 
 use crate::kprint;
 
-use super::file::Stream;
+use crate::internal::file::Stream;
 
 pub const BACKSPACE: char = '\x08';
 pub const END_OF_TEXT: char = '\x03';
@@ -14,7 +14,9 @@ pub const END_OF_TRANSMISSION: char = '\x04';
 pub const ESC: char = '\x1B';
 
 #[derive(Debug)]
-pub struct Console;
+pub struct Console {
+    stdin_index: usize,
+}
 
 pub static ECHO: AtomicBool = AtomicBool::new(true);
 pub static STDIN: Mutex<String> = Mutex::new(String::new());
@@ -22,15 +24,13 @@ pub static RAW_MODE: AtomicBool = AtomicBool::new(false);
 
 impl Console {
     pub fn new() -> Self {
-        Console
+        Console { stdin_index: 0 }
     }
 }
 
 pub fn read_single_char() -> char {
     loop {
-        let res = interrupts::without_interrupts(|| {
-            STDIN.lock().pop()
-        });
+        let res = interrupts::without_interrupts(|| STDIN.lock().pop());
 
         if let Some(c) = res {
             return c;
@@ -108,36 +108,31 @@ pub fn handle_key(key: char) {
             match key {
                 END_OF_TEXT => {
                     kprint!("{}", "^C");
-                },
+                }
                 END_OF_TRANSMISSION => {
                     kprint!("{}", "^D");
-                },
+                }
                 ESC => {
                     kprint!("{}", "^[");
-                },
+                }
                 _ => {
                     kprint!("{}", key);
                 }
             }
         }
-
     }
 }
 
 impl Stream for Console {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
-        // if buf is 4 bytes long, we can read a single char, else we read a line
-        if buf.len() == 4 {
-            let c = read_single_char();
-            buf[0] = c as u8;
-            Ok(1)
-        } else {
-            let line = read_line();
-            let bytes = line.as_bytes();
-            let len = bytes.len();
-            buf[..len].copy_from_slice(bytes);
-            Ok(len)
+        // read buf.len() bytes from stdin
+        let mut i = 0;
+        while i < buf.len() {
+            buf[i] = read_single_char() as u8;
+            i += 1;
         }
+        self.stdin_index += i;
+        Ok(i)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, crate::internal::file::FileError> {

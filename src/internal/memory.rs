@@ -1,5 +1,5 @@
-use x86_64::structures::paging::{PageTable, OffsetPageTable};
-use x86_64::{VirtAddr, PhysAddr};
+use x86_64::structures::paging::{OffsetPageTable, PageTable};
+use x86_64::{PhysAddr, VirtAddr};
 
 unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
@@ -53,7 +53,7 @@ unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'
     unsafe { OffsetPageTable::new(level_4_table, physical_memory_offset) }
 }
 
-use x86_64::structures::paging::{Page, PhysFrame, Size4KiB, FrameAllocator};
+use x86_64::structures::paging::{FrameAllocator, Page, PhysFrame, Size4KiB};
 
 pub fn create_example_mapping(
     page: Page,
@@ -66,12 +66,9 @@ pub fn create_example_mapping(
     let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
     let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
 
-    let map_to_result = unsafe {
-        mapper.map_to(page, frame, flags, frame_allocator)
-    };
+    let map_to_result = unsafe { mapper.map_to(page, frame, flags, frame_allocator) };
     map_to_result.expect("map_to failed").flush();
 }
-
 
 use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 
@@ -90,10 +87,8 @@ impl BootInfoFrameAllocator {
 
     fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
         let regions = self.memory_map.iter();
-        let usable_regions = regions
-            .filter(|r| r.region_type == MemoryRegionType::Usable);
-        let addr_ranges = usable_regions
-            .map(|r| r.range.start_addr()..r.range.end_addr());
+        let usable_regions = regions.filter(|r| r.region_type == MemoryRegionType::Usable);
+        let addr_ranges = usable_regions.map(|r| r.range.start_addr()..r.range.end_addr());
         let frame_addresses = addr_ranges.flat_map(|r| r.step_by(4096));
         frame_addresses.map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
     }
@@ -112,5 +107,6 @@ pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
     let mut mapper = unsafe { init_page_table(phys_mem_offset) };
     let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);
 
-    crate::internal::allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+    crate::internal::allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
 }

@@ -3,9 +3,9 @@ const BUF_WIDTH: usize = 80;
 
 use core::fmt;
 
-use volatile::Volatile;
 use lazy_static::lazy_static;
 use spin::Mutex;
+use volatile::Volatile;
 use x86_64::instructions::interrupts;
 
 #[allow(dead_code)]
@@ -183,7 +183,8 @@ pub fn clear_screen() {
 }
 
 lazy_static! {
-    pub static ref VGA_WRITER: Mutex<VgaWriter> = spin::Mutex::new(VgaWriter::new(Color::White, Color::Black));
+    pub static ref VGA_WRITER: Mutex<VgaWriter> =
+        spin::Mutex::new(VgaWriter::new(Color::White, Color::Black));
 }
 
 #[doc(hidden)] // needs to be public for the print! macro, but shouldn't be used directly

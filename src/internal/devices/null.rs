@@ -1,10 +1,12 @@
-use alloc::string::ToString;
-
-use crate::internal::{devices::zero, file::{FileFlags, Stream}};
+use crate::internal::{
+    devices::zero,
+    file::{FileFlags, Stream},
+    fs::FsError,
+};
 
 #[derive(Debug)]
 pub struct Null {
-    inner: zero::Zero
+    inner: zero::Zero,
 }
 
 impl Null {
@@ -16,16 +18,20 @@ impl Null {
 }
 
 impl Stream for Null {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
-        if !(self.inner.flags & (FileFlags::Read as u8) != 0){
-            return Err(crate::internal::file::FileError::PermissionError("No permission to read".to_string()));
+    fn read(&mut self, _buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
+        if !(self.inner.flags & (FileFlags::Read as u8) != 0) {
+            return Err(crate::internal::file::FileError::PermissionError(
+                FsError::ReadError.into(),
+            ));
         }
         Ok(0)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, crate::internal::file::FileError> {
-        if !(self.inner.flags & (FileFlags::Write as u8) != 0){
-            return Err(crate::internal::file::FileError::PermissionError("No permission to write".to_string()));
+        if !(self.inner.flags & (FileFlags::Write as u8) != 0) {
+            return Err(crate::internal::file::FileError::PermissionError(
+                FsError::WriteError.into(),
+            ));
         }
         self.inner.write(buf)
     }

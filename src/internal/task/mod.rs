@@ -6,8 +6,8 @@ use core::{
     task::{Context, Poll},
 };
 
-pub mod simple_executor;
 pub mod executor;
+pub mod simple_executor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(u64);

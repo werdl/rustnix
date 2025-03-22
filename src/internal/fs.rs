@@ -22,7 +22,7 @@
  * Note that directories are just a figment of the filesystem's imagination; they are not implemented in this filesystem, rather being abstracted away by the virtal FS and the filenames. They cannot have properties like size, creation time, and can never be empty.
  */
 
-use core::default;
+use core::{default, fmt::Display};
 
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -30,7 +30,7 @@ use spin::Mutex;
 use crate::{
     internal::ata::{BLOCK_SIZE, read, write},
     internal::clk,
-    internal::file::{Stream, FileError, FileSystem}
+    internal::file::{FileError, FileSystem, Stream},
 };
 
 use alloc::{
@@ -130,25 +130,39 @@ pub enum FsError {
     InvalidMetadata,
     WriteError,
     ReadError,
+    UnwritableFile,
+    UnreadableFile,
+    FilesystemNotFound,
+    FilesystemExists,
+    InvalidFileDescriptor,
 }
 
-impl ToString for FsError {
-    fn to_string(&self) -> String {
-        match self {
-            FsError::InvalidPath => "Invalid path".to_string(),
-            FsError::FileNotFound => "File not found".to_string(),
-            FsError::FileExists => "File already exists".to_string(),
-            FsError::DiskFull => "Disk is full".to_string(),
-            FsError::OutOfInodes => "Out of inodes".to_string(),
-            FsError::OutOfDataBlocks => "Out of data blocks".to_string(),
-            FsError::InvalidInode => "Invalid inode".to_string(),
-            FsError::InvalidDataBlock => "Invalid data block".to_string(),
-            FsError::InvalidSuperblock => "Invalid superblock".to_string(),
-            FsError::InvalidInodeTable => "Invalid inode table".to_string(),
-            FsError::InvalidMetadata => "Invalid metadata".to_string(),
-            FsError::WriteError => "Write error".to_string(),
-            FsError::ReadError => "Read error".to_string(),
-        }
+impl Display for FsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                FsError::InvalidPath => "Invalid path".to_string(),
+                FsError::FileNotFound => FsError::FileNotFound.to_string(),
+                FsError::FileExists => "File already exists".to_string(),
+                FsError::DiskFull => "Disk is full".to_string(),
+                FsError::OutOfInodes => "Out of inodes".to_string(),
+                FsError::OutOfDataBlocks => "Out of data blocks".to_string(),
+                FsError::InvalidInode => "Invalid inode".to_string(),
+                FsError::InvalidDataBlock => "Invalid data block".to_string(),
+                FsError::InvalidSuperblock => "Invalid superblock".to_string(),
+                FsError::InvalidInodeTable => "Invalid inode table".to_string(),
+                FsError::InvalidMetadata => "Invalid metadata".to_string(),
+                FsError::WriteError => "Write error".to_string(),
+                FsError::ReadError => "Read error".to_string(),
+                FsError::UnwritableFile => "File is unwritable".to_string(),
+                FsError::UnreadableFile => "File is unreadable".to_string(),
+                FsError::FilesystemNotFound => "Filesystem not found".to_string(),
+                FsError::FilesystemExists => "Filesystem already exists".to_string(),
+                FsError::InvalidFileDescriptor => "Invalid file descriptor".to_string(),
+            }
+        )
     }
 }
 
@@ -731,7 +745,6 @@ impl PhysFs {
 
         let inode_pointers = self.get_all_block_addresses(&inode);
 
-
         let mut data = Vec::new();
         for i in 1..inode.num_data_blocks {
             let data_block = &self.data_blocks[inode_pointers[i as usize] as usize].data;
@@ -866,19 +879,24 @@ impl PhysFs {
         for i in 0..data_blocks_pointers.len() {
             // add the data block pointers to the inode
             // i + 1 because the first block is the metadata block
-            if (i+1) < 12 {
-                updated_inode.data_block_pointers[i+1] = data_blocks_pointers[i];
-            } else if (i+1) < 12 + POINTERS_PER_BLOCK {
-                self.allocate_single_indirect_block(&mut updated_inode, (i+1) as u64 - 12);
-                let block_index = ((i+1) % POINTERS_PER_BLOCK) as usize;
-                let block = &mut self.data_blocks[updated_inode.single_indirect_block_pointer as usize];
+            if (i + 1) < 12 {
+                updated_inode.data_block_pointers[i + 1] = data_blocks_pointers[i];
+            } else if (i + 1) < 12 + POINTERS_PER_BLOCK {
+                self.allocate_single_indirect_block(&mut updated_inode, (i + 1) as u64 - 12);
+                let block_index = ((i + 1) % POINTERS_PER_BLOCK) as usize;
+                let block =
+                    &mut self.data_blocks[updated_inode.single_indirect_block_pointer as usize];
                 let pointers: &mut [u64; POINTERS_PER_BLOCK] =
                     unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
                 pointers[block_index] = data_blocks_pointers[i];
-            } else if (i+1) < 12 + POINTERS_PER_BLOCK * POINTERS_PER_BLOCK {
-                self.allocate_double_indirect_block(&mut updated_inode, (i+1) as u64 - 12 - POINTERS_PER_BLOCK as u64);
+            } else if (i + 1) < 12 + POINTERS_PER_BLOCK * POINTERS_PER_BLOCK {
+                self.allocate_double_indirect_block(
+                    &mut updated_inode,
+                    (i + 1) as u64 - 12 - POINTERS_PER_BLOCK as u64,
+                );
                 let block_index = (i + 1) / POINTERS_PER_BLOCK;
-                let block = &mut self.data_blocks[updated_inode.double_indirect_block_pointer as usize];
+                let block =
+                    &mut self.data_blocks[updated_inode.double_indirect_block_pointer as usize];
                 let pointers: &mut [u64; POINTERS_PER_BLOCK] =
                     unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
                 if pointers[block_index] == 0 {
@@ -891,16 +909,25 @@ impl PhysFs {
                         single_indirect_block_pointer: pointers[block_index],
                         ..Default::default()
                     },
-                    (i+1) as u64 % POINTERS_PER_BLOCK as u64,
+                    (i + 1) as u64 % POINTERS_PER_BLOCK as u64,
                 );
                 let single_indirect_block = &mut self.data_blocks[pointers[block_index] as usize];
-                let single_pointers: &mut [u64; POINTERS_PER_BLOCK] =
-                    unsafe { &mut *(single_indirect_block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
-                single_pointers[((i+1) as u64 % POINTERS_PER_BLOCK as u64) as usize] = data_blocks_pointers[i];
+                let single_pointers: &mut [u64; POINTERS_PER_BLOCK] = unsafe {
+                    &mut *(single_indirect_block.data.as_mut_ptr()
+                        as *mut [u64; POINTERS_PER_BLOCK])
+                };
+                single_pointers[((i + 1) as u64 % POINTERS_PER_BLOCK as u64) as usize] =
+                    data_blocks_pointers[i];
             } else {
-                self.allocate_triple_indirect_block(&mut updated_inode, (i+1) as u64 - 12 - POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64);
-                let block_index = ((i as u64 + 1) / (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64)) as usize;
-                let block = &mut self.data_blocks[updated_inode.triple_indirect_block_pointer as usize];
+                self.allocate_triple_indirect_block(
+                    &mut updated_inode,
+                    (i + 1) as u64 - 12 - POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64,
+                );
+                let block_index = ((i as u64 + 1)
+                    / (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64))
+                    as usize;
+                let block =
+                    &mut self.data_blocks[updated_inode.triple_indirect_block_pointer as usize];
 
                 let pointers: &mut [u64; POINTERS_PER_BLOCK] =
                     unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
@@ -914,22 +941,32 @@ impl PhysFs {
                         double_indirect_block_pointer: pointers[block_index],
                         ..Default::default()
                     },
-                    (i+1) as u64 % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64),
+                    (i + 1) as u64 % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64),
                 );
                 let double_indirect_block = &mut self.data_blocks[pointers[block_index] as usize];
-                let double_pointers: &mut [u64; POINTERS_PER_BLOCK] =
-                    unsafe { &mut *(double_indirect_block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
+                let double_pointers: &mut [u64; POINTERS_PER_BLOCK] = unsafe {
+                    &mut *(double_indirect_block.data.as_mut_ptr()
+                        as *mut [u64; POINTERS_PER_BLOCK])
+                };
                 self.allocate_single_indirect_block(
                     &mut Inode {
-                        single_indirect_block_pointer: double_pointers[((i+1) as u64 % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64)) as usize],
+                        single_indirect_block_pointer: double_pointers[((i + 1) as u64
+                            % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64))
+                            as usize],
                         ..Default::default()
                     },
-                    (i+1) as u64 % POINTERS_PER_BLOCK as u64,
+                    (i + 1) as u64 % POINTERS_PER_BLOCK as u64,
                 );
-                let single_indirect_block = &mut self.data_blocks[double_pointers[((i+1) as u64 % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64)) as usize] as usize];
-                let single_pointers: &mut [u64; POINTERS_PER_BLOCK] =
-                    unsafe { &mut *(single_indirect_block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
-                single_pointers[((i+1) as u64 % POINTERS_PER_BLOCK as u64) as usize] = data_blocks_pointers[i];
+                let single_indirect_block = &mut self.data_blocks[double_pointers[((i + 1) as u64
+                    % (POINTERS_PER_BLOCK as u64 * POINTERS_PER_BLOCK as u64))
+                    as usize]
+                    as usize];
+                let single_pointers: &mut [u64; POINTERS_PER_BLOCK] = unsafe {
+                    &mut *(single_indirect_block.data.as_mut_ptr()
+                        as *mut [u64; POINTERS_PER_BLOCK])
+                };
+                single_pointers[((i + 1) as u64 % POINTERS_PER_BLOCK as u64) as usize] =
+                    data_blocks_pointers[i];
             }
         }
 
@@ -1004,8 +1041,6 @@ impl VirtFs {
     }
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct FileHandle {
     file_name: String,
@@ -1037,7 +1072,7 @@ impl FileHandle {
             }
         }
 
-        Err(FileError::NotFoundError("File not found".to_string()))
+        Err(FileError::NotFoundError(FsError::FileNotFound.into()))
     }
 }
 
@@ -1046,16 +1081,17 @@ impl Stream for FileHandle {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
 
         if !(self.flags & (FileFlags::Read as u8) != 0) {
-            return Err(FileError::PermissionError("File is not readable".to_string()));
+            return Err(FileError::PermissionError(FsError::ReadError.into()));
         }
 
         let (data, _) = fs.phys_fs.read_file(&self.file_name)?;
 
         // we know data will be a multiple of 512 bytes
-        buf.copy_from_slice(&data[..buf.len()]);
+        let len = buf.len().min(data.len());
+        buf[..len].copy_from_slice(&data[..len]);
 
         Ok(data.len())
     }
@@ -1064,10 +1100,10 @@ impl Stream for FileHandle {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
 
         if !(self.flags & (FileFlags::Write as u8) != 0) {
-            return Err(FileError::PermissionError("File is not writable".to_string()));
+            return Err(FileError::PermissionError(FsError::WriteError.into()));
         }
 
         fs.phys_fs.write_file(&self.file_name, buf, None, None)?;
@@ -1078,7 +1114,7 @@ impl Stream for FileHandle {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         fs.open_files.retain(|f| f.file_name != self.file_name);
         Ok(())
     }
@@ -1087,7 +1123,7 @@ impl Stream for FileHandle {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         fs.phys_fs.write_to_disk(fs.bus, fs.dsk)?;
         Ok(())
     }
@@ -1105,13 +1141,13 @@ impl FileSystem for VirtFs {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let res = fs.phys_fs.read_file(path);
         if res.is_err() {
             if flags & (FileFlags::Create as u8) != 0 {
                 fs.phys_fs.create_file(path, [6, 6, 6], 0)?;
             } else {
-                return Err(FileError::NotFoundError("File not found".to_string()));
+                return Err(FileError::NotFoundError(FsError::FileNotFound.into()));
             }
         }
 
@@ -1128,7 +1164,7 @@ impl FileSystem for VirtFs {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         for i in 0..inode.num_data_blocks {
             fs.phys_fs.data_blocks[inode.data_block_pointers[i as usize] as usize] =
@@ -1150,7 +1186,7 @@ impl FileSystem for VirtFs {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let mut updated_inode = inode.clone();
         updated_inode.file_name = inode.file_name;
@@ -1208,7 +1244,7 @@ impl FileSystem for VirtFs {
         let mut file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get_mut(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let mut updated_inode = inode.clone();
         updated_inode.file_name = inode.file_name;
@@ -1267,7 +1303,7 @@ impl FileSystem for VirtFs {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
         let metadata = FileMetadata {
@@ -1304,7 +1340,7 @@ impl FileSystem for VirtFs {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let inode = fs.phys_fs.find_inode_by_name(path)?;
         let metadata_block = &fs.phys_fs.data_blocks[inode.data_block_pointers[0] as usize].data;
         let metadata = FileMetadata {
@@ -1343,7 +1379,7 @@ impl FileSystem for VirtFs {
         let file_systems = FILESYSTEMS.lock();
         let fs = file_systems
             .get(&(self.bus, self.dsk))
-            .ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+            .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
         let mut files = Vec::new();
         for inode in fs.phys_fs.inode_table.iter() {
             let file_name = String::from_utf8(inode.file_name.to_vec()).unwrap();
@@ -1357,7 +1393,9 @@ impl FileSystem for VirtFs {
 
 pub fn get_fs_mut(bus: usize, dsk: usize) -> Result<&'static mut VirtFs, FileError> {
     let mut file_systems = FILESYSTEMS.lock();
-    let fs = file_systems.get_mut(&(bus, dsk)).ok_or(FileError::NotFoundError("Filesystem not found".to_string()))?;
+    let fs = file_systems
+        .get_mut(&(bus, dsk))
+        .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
     // Use Box::leak to safely extend the lifetime of the reference to 'static
     Ok(Box::leak(Box::new(fs.clone())))
 }
@@ -1368,14 +1406,14 @@ pub fn get_first_good_fs() -> Result<(usize, usize), FileError> {
         // check is
         Ok((*bus, *dsk))
     } else {
-        Err(FileError::NotFoundError("Filesystem not found".to_string()))
+        Err(FileError::NotFoundError(FsError::FilesystemNotFound.into()))
     }
 }
 
 pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), FileError> {
     let mut file_systems = FILESYSTEMS.lock();
     if file_systems.contains_key(&(bus, dsk)) {
-        return Err(FileError::WriteError("Filesystem already exists".to_string()));
+        return Err(FileError::WriteError(FsError::FilesystemExists.into()));
     }
 
     if size_of_new.is_some() {
@@ -1411,7 +1449,7 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
         );
         Ok(())
     } else {
-        Err(FileError::NotFoundError("Filesystem not found".to_string()))
+        Err(FileError::NotFoundError(FsError::FilesystemNotFound.into()))
     }
 }
 

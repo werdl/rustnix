@@ -1,19 +1,17 @@
-use log::{error, warn};
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use crate::internal::gdt;
 use crate::kprint;
 use lazy_static::lazy_static;
-use crate::internal::gdt;
+use log::{error, warn};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
-
-    pub static ref IRQ_HANDLERS: spin::Mutex<[fn(); 16]> =
-        spin::Mutex::new([|| {}; 16]);
-
+    pub static ref IRQ_HANDLERS: spin::Mutex<[fn(); 16]> = spin::Mutex::new([|| {}; 16]);
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe {
-            idt.double_fault.set_handler_fn(double_fault_handler)
+            idt.double_fault
+                .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
         idt[InterruptIndex::Timer.as_u8()].set_handler_fn(timer_interrupt_handler);
@@ -48,16 +46,13 @@ pub fn set_irq_handler(irq: u8, handler: fn()) {
     });
 }
 
-
 macro_rules! irq_handler {
     ($handler:ident, $irq:expr) => {
         pub extern "x86-interrupt" fn $handler(_: InterruptStackFrame) {
             let handlers = IRQ_HANDLERS.lock();
             handlers[$irq]();
             unsafe {
-                PICS.lock().notify_end_of_interrupt(
-                    PIC_1_OFFSET + $irq
-                );
+                PICS.lock().notify_end_of_interrupt(PIC_1_OFFSET + $irq);
             }
         }
     };
@@ -80,13 +75,13 @@ irq_handler!(irq13_handler, 13);
 irq_handler!(irq14_handler, 14);
 irq_handler!(irq15_handler, 15);
 
-use x86_64::structures::idt::PageFaultErrorCode;
 use crate::hlt_loop;
+use x86_64::structures::idt::PageFaultErrorCode;
 
 extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
-    error_code: PageFaultErrorCode)
-{
+    error_code: PageFaultErrorCode,
+) {
     use x86_64::registers::control::Cr2;
 
     error!("EXCEPTION: PAGE FAULT");
@@ -99,7 +94,8 @@ extern "x86-interrupt" fn page_fault_handler(
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     kprint!(".");
     unsafe {
-        PICS.lock().notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+        PICS.lock()
+            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
 }
 
@@ -107,7 +103,10 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     warn!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
-extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, _error_code: u64) -> ! {
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame,
+    _error_code: u64,
+) -> ! {
     panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
 }
 
@@ -121,7 +120,6 @@ use spin;
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
 
 pub static PICS: spin::Mutex<ChainedPics> =
     spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });

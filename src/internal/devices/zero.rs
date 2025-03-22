@@ -1,6 +1,7 @@
-use alloc::string::ToString;
-
-use crate::internal::file::{FileFlags, Stream};
+use crate::internal::{
+    file::{FileFlags, Stream},
+    fs::FsError,
+};
 
 #[derive(Debug)]
 pub struct Zero {
@@ -10,7 +11,9 @@ pub struct Zero {
 impl Stream for Zero {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
         if !(self.flags & (FileFlags::Read as u8) != 0) {
-            return Err(crate::internal::file::FileError::PermissionError("No permission to read".to_string()));
+            return Err(crate::internal::file::FileError::PermissionError(
+                FsError::ReadError.into(),
+            ));
         }
         // fill buf with 0s
         for i in 0..buf.len() {
@@ -22,7 +25,9 @@ impl Stream for Zero {
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, crate::internal::file::FileError> {
         if !(self.flags & (FileFlags::Write as u8) != 0) {
-            return Err(crate::internal::file::FileError::PermissionError("No permission to write".to_string()));
+            return Err(crate::internal::file::FileError::PermissionError(
+                FsError::WriteError.into(),
+            ));
         }
         Ok(buf.len()) // writing to /dev/zero is always successful
     }
@@ -45,9 +50,7 @@ impl Stream for Zero {
 
 impl Zero {
     pub fn new(flags: u8) -> Self {
-        Zero {
-            flags,
-        }
+        Zero { flags }
     }
 }
 

@@ -1,24 +1,23 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
-#![feature(core_intrinsics)]
 #![test_runner(rustnix::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
 
-use core::{intrinsics::unreachable, panic::PanicInfo, u8};
+use core::panic::PanicInfo;
 
-use bootloader::{entry_point, BootInfo};
+use bootloader::{BootInfo, entry_point};
+use rustnix::internal::{
+    file::FileFlags, syscall
+};
 #[allow(unused_imports)]
 use rustnix::kprintln;
-use rustnix::internal::{devices::rand, file::{FileFlags, Stream}, io, task::{executor::Executor, Task}};
-
 
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-
     kprintln!("{}", info);
     rustnix::hlt_loop()
 }
@@ -36,22 +35,17 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
-    let mut buf = [0u8; 24];
+    let mut buf = [0u8; 5];
 
-    let file = io::open("/dev/stdin", FileFlags::Read as u8);
+    let file = syscall::open("/dev/stdin", FileFlags::Read as u8);
 
-    io::read(file, &mut buf);
+    let _ = syscall::read(file as u8, &mut buf);
 
-    kprintln!("Data read from /dev/stdin: {:?}", buf);
-
-
-
+    kprintln!("\nData read from /dev/stdin: {:?}", buf);
 
     loop {}
 
     unreachable!(); // executor.run() should never return
-
-
 
     // let mut buf = vec![0;512];
 
@@ -72,7 +66,6 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     // ata::read(0, 1, 1, &mut buffer);
 
     // println!("Data read from sector 1: {:?}", buffer);
-
 
     // print the data
     // println!("Data read from sector {}: {:?}", sector, core::str::from_utf8(&buffer).unwrap());

@@ -52,4 +52,3 @@ fn many_boxes() {
         assert_eq!(*x, i);
     }
 }
-
