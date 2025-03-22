@@ -1,6 +1,8 @@
 # rustnix
 > another useless toy Unix clone
 
+![Screenshot of rustnix](img/rustnix.jpg)
+
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/werdl/rustnix/test.yml)
 ![GitHub last commit](https://img.shields.io/github/last-commit/werdl/rustnix)
 ![GitHub top language](https://img.shields.io/github/languages/top/werdl/rustnix)
@@ -15,7 +17,7 @@
 - [ ] Syscalls
 - [ ] Processes
 - [ ] ELF Binaries
-- [ ] Basic Userspace  
+- [ ] Basic Userspace
 
 ## Thanks
 ### Code

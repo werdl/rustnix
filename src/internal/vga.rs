@@ -6,7 +6,7 @@ use core::fmt;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
-use x86_64::instructions::interrupts;
+use x86_64::instructions::{interrupts, port::Port};
 
 #[allow(dead_code)]
 #[allow(missing_docs)] // no need to document this, only colours
@@ -138,9 +138,9 @@ impl VgaWriter {
     /// Write a string to the VGA buffer
     pub fn write_str(&mut self, s: &str) {
         for c in s.chars() {
-            match c {
-                '\n' => self.write_byte(b'\n'),
-                c if c.is_ascii() => self.write_byte(c as u8),
+            match c as u8 {
+                b'\n' => self.write_byte(b'\n'),
+                0x20..=0x7e => self.write_byte(c as u8),
                 _ => self.write_byte(0xfe), // ■ for unsupported characters
             }
         }
@@ -171,6 +171,8 @@ pub fn write_str(s: &str, fg: Color, bg: Color) {
         for c in s.chars() {
             write_char(c, fg, bg);
         }
+
+        // TODO: cursor
     });
 }
 
