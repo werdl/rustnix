@@ -173,8 +173,8 @@ pub fn flush(fd: usize) -> isize {
 /// stop the system (STOP)
 pub fn stop(stop_type: usize) -> isize {
     match stop_type {
-        0 => crate::internal::acpi::shutdown(),
-        1 => unsafe { asm!("xor rax, rax", "mov cr3, rax") },
+        0 => crate::internal::acpi::shutdown(), // ACPI shutdown
+        1 => unsafe { asm!("xor rax, rax", "mov cr3, rax") }, // reboot
         _ => {
             warn!("Unknown stop type: {}", stop_type);
             set_errno(Error::EINVAL);
@@ -211,6 +211,7 @@ pub fn poll(fd: usize, io_event: usize) -> isize {
     }
 }
 
+/// sleep for a number of nanoseconds (SLEEP)
 pub fn sleep(nanos: usize) -> isize {
     // sleep() accepts milliseconds, so convert nanoseconds to milliseconds
     let millis = nanos as f64 / 1_000_000.0;
@@ -218,8 +219,42 @@ pub fn sleep(nanos: usize) -> isize {
     0
 }
 
+/// wait for a number of nanoseconds (WAIT)
 pub fn wait(nanos: usize) -> isize {
     // wait() accepts nano seconds
     crate::internal::clk::wait(nanos as u64);
     0
+}
+
+/// Seek to a position in a file descriptor (SEEK)
+pub fn seek(fd: usize, pos: usize) -> isize {
+    let mut files = FILES.lock();
+
+    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+
+    match resource {
+        Some(resource) => {
+            match resource.seek(pos) {
+                Ok(new_pos) => new_pos as isize,
+                Err(err) => {
+                    set_errno(err.into());
+                    -1
+                }
+            }
+        },
+        None => {
+            set_errno(Error::EBADF);
+            -1
+        }
+    }
+}
+
+/// get the number of nanoseconds since boot (NANOS)
+pub fn nanos() -> usize {
+    crate::internal::clk::get_boot_time_ns() as usize // safe as we target x86_64
+}
+
+/// get the number of seconds since 1970-01-01T00:00:00Z (TIME)
+pub fn time() -> u64 {
+    crate::internal::clk::get_unix_time()
 }

@@ -1,5 +1,4 @@
 use lazy_static::lazy_static;
-use log::trace;
 use x86_64::VirtAddr;
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
@@ -44,7 +43,7 @@ struct Selectors {
 
 /// Initialize the Global Descriptor Table
 pub fn init() {
-    trace!("Initializing GDT");
+    crate::internal::vga::trace("Initializing GDT");
     use x86_64::instructions::segmentation::{CS, Segment};
     use x86_64::instructions::tables::load_tss;
 

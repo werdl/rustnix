@@ -133,10 +133,19 @@ pub const FREE: usize = 0x13;
 pub const KIND: usize = 0x14;
 /// get the last error number - `get_errno()`
 pub const GETERRNO: usize = 0x15;
+/// poll a file descriptor - `poll(fd, event)`
+pub const POLL: usize = 0x16;
+/// get the number of nanoseconds since boot - `boot_time()`
+pub const BOOTTIME: usize = 0x17;
+/// get the number of seconds since 1970-01-01T00:00:00Z - `unix_time()`
+pub const TIME: usize = 0x18;
+/// seek to a position in a file descriptor - `seek(fd, pos)`
+pub const SEEK: usize = 0x19;
 
 mod service;
 pub use service::init;
 
+/// Dispatch a syscall, given the syscall number and arguments
 pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -> isize {
     match n {
         READ => {
@@ -171,9 +180,9 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             unimplemented!("EXIT")
         }
         SLEEP => {
-            let ms = arg1;
+            let ns = arg1;
 
-            service::sleep(ms)
+            service::sleep(ns)
         }
         WAIT => {
             let nanos: usize = arg1;
@@ -226,6 +235,24 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             unimplemented!("KIND")
         }
         GETERRNO => *ERRNO.lock() as isize,
+        POLL => {
+            let fd = arg1;
+            let event = arg2;
+
+            service::poll(fd, event)
+        }
+        BOOTTIME => {
+            service::nanos() as isize
+        }
+        TIME => {
+            service::time() as isize
+        }
+        SEEK => {
+            let fd = arg1;
+            let pos = arg2;
+
+            service::seek(fd, pos)
+        }
         _ => {
             warn!("Unknown syscall: {}", n);
             -1

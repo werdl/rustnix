@@ -1,8 +1,8 @@
 // todo
 #[repr(align(8), C)]
 #[derive(Debug, Clone, Copy, Default)]
+#[allow(missing_docs)]
 pub struct Registers {
-    // Saved scratch registers
     pub r11: usize,
     pub r10: usize,
     pub r9: usize,

@@ -187,14 +187,24 @@ fn write_str_rainbow(s: &str) {
 
 pub fn init(boot_info: &'static BootInfo) {
     system_msg!("Initializing kernel...");
-    kprint!("[ ");
-    vga::write_str("INFO", Color::LightBlue, Color::Black);
-    kprint!(" ] Initializing memory...\n");
-    memory::init(boot_info);
-    init_logger();
 
+    gdt::init();
+    vga::info("GDT initialized");
+
+    interrupts::init_idt();
+    vga::info("IDT initialized");
+
+    interrupts::init();
+    vga::info("Interrupts enabled");
+
+    clk::pit::init();
+    vga::info("PIT initialized");
+
+    memory::init(boot_info);
+    vga::info("Memory initialized");
+
+    init_logger();
     info!("Logger initialized");
-    info!("Memory initialized");
 
     syscall::init();
     info!("Syscalls initialized");
@@ -202,25 +212,13 @@ pub fn init(boot_info: &'static BootInfo) {
     keyboard::init();
     info!("Console initialized");
 
-    gdt::init();
-    info!("GDT initialized");
-
-    interrupts::init_idt();
-    info!("IDT initialized");
-
-    interrupts::init();
-    info!("Interrupts enabled");
-
-    clk::pit::init();
-    info!("PIT initialized");
-
     ata::init();
     info!("ATA initialized");
 
     acpi::init();
     info!("ACPI initialized");
 
-    system_msg!("Kernel initialized");
+    system_msg!("Kernel initialized in {} ms", clk::get_boot_time_ns() / 1_000_000);
 
     #[cfg(feature = "ascii-art")]
     {

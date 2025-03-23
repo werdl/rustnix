@@ -1,6 +1,5 @@
 use crate::internal::interrupts;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use log::trace;
 use x86_64::instructions::port::Port;
 
 use x86_64::instructions::interrupts as x86_interrupts;
@@ -19,7 +18,7 @@ static TSC_FREQUENCY: AtomicU64 = AtomicU64::new(0);
 
 /// Initialize the PIT
 pub fn init() {
-    trace!("Initializing PIT");
+    crate::internal::vga::trace("Initializing PIT");
     unsafe {
         let mut port = Port::new(0x43);
         port.write(0x36u8); // Channel 0, lobyte/hibyte, rate generator, binary

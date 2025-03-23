@@ -2,7 +2,7 @@ use crate::internal::gdt;
 use crate::internal::{interrupts, syscall};
 use crate::kprint;
 use lazy_static::lazy_static;
-use log::{error, trace, warn};
+use log::{error, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
@@ -45,13 +45,13 @@ lazy_static! {
 
 /// Initialize the Interrupt Descriptor Table
 pub fn init_idt() {
-    trace!("Initializing IDT");
+    crate::internal::vga::trace("Initializing IDT");
     IDT.load();
 }
 
 /// Initialize the interrupt system
 pub fn init() {
-    trace!("Initializing interrupts");
+    crate::internal::vga::trace("Initializing interrupts");
     unsafe { interrupts::PICS.lock().initialize() };
     x86_64::instructions::interrupts::enable();
 }
@@ -170,6 +170,7 @@ impl InterruptIndex {
 macro_rules! wrap {
     ($fn: ident => $w:ident) => {
         #[naked]
+        /// must be sysv64 calling convention, as x86-interrupt would overwrite rax, with the return value we are setting
         pub unsafe extern "sysv64" fn $w() {
             unsafe {core::arch::naked_asm!(
                 "push rax",

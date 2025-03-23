@@ -9,7 +9,11 @@ else
     cargo build --target x86_64-rustnix.json
 fi
 
-cargo bootimage --target x86_64-rustnix.json --features $(echo $1_log)
+if [[ -n "$1" ]]; then
+    cargo bootimage --target x86_64-rustnix.json --features $(echo $1_log)
+else
+    cargo bootimage --target x86_64-rustnix.json
+fi
 
 # Ensure the build was successful
 if [[ ! $? -eq 0 ]]; then

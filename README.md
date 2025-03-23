@@ -23,7 +23,11 @@
 ### Code
 - for the initial stages of this project, I followed [https://os.phil-opp.com/](https://os.phil-opp.com/)
 - the ATA driver code was taken mainly from [https://github.com/vinc/moros](https://github.com/vinc/moros)
-### Libraries
+- I have read some of the code of [moros](https://github.com/vinc/moros) and [RedoxOS](https://www.redox-os.org/) for inspiration and implementation details
+- the [OSDev Wiki](https://wiki.osdev.org) has also been helpful
+### Libraries used
+- `acpi`
+- `aml`
 - `bit_field`
 - `bootloader`
 - `chrono`
@@ -38,3 +42,19 @@
 - `uart_16550`
 - `volatile` (several versions behind)
 - `x86_64`
+
+## Syscalls
+|Number|Name|Arg1|Arg2|Arg3|Arg4|Return|
+|------|----|----|----|----|----|------|
+|1|`read`|`fd`|`buf` (ptr)|`buf_len`||`nread`|
+|2|`write`|`fd`|`buf` (ptr)|`buf_len`||`nwritten`|
+|3|`open`|`path` (ptr)|`flags`|`mode` (bitfield)||`fd`|
+|4|`close`|`fd`||||0 or -1 (err)|
+|5|`flush`|`fd`||||0 or -1 (err)|
+|7|`sleep`|`nanoseconds`||||0|
+|8|`wait` (uses TSC)|`nanoseconds`||||0|
+|13|`stop`|`kind` (0=shutdown, 1=reboot)|||||
+|18|`alloc`|`size`|`align`|||`ptr`|
+|19|`free`|`ptr`|`size`|`align`|||
+|20|`geterrno`|||||`errno`|
+|21|`poll`|`fd`|`event` (1=read, 2=write)|||`ready`|

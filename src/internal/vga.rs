@@ -270,3 +270,27 @@ macro_rules! system_msg {
         crate::kprintln!($($arg)*);
     };
 }
+
+/// print an info message like the logger, should only be used before the logger is initialized
+pub fn info(s: &str) {
+    #[cfg(all(
+        any(feature = "info_log", feature = "debug_log", feature = "trace_log"),
+        not(any(feature = "error_log", feature = "warn_log"))
+    ))]
+    {
+        kprint!("[ ");
+        write_str("INFO", Color::LightBlue, Color::Black);
+        kprint!(" ] {}\n", s);
+    }
+}
+
+/// print a trace message like the logger, should only be used before the logger is initialized
+#[allow(dead_code, unused_variables)]
+pub fn trace(s: &str) {
+    #[cfg(feature = "trace_log")]
+    {
+        kprint!("[ ");
+        write_str("TRACE", Color::LightCyan, Color::Black);
+        kprint!(" ] {}\n", s);
+    }
+}
