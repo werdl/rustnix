@@ -1,1 +1,1 @@
-Hello! This file has been loaded into the rustnix filesystem, by the fs-loader rustnix submodule. Anything else in the directory <master>/initrd will also have been loaded to /.
+Hello! This file has been loaded into the rustnix filesystem, by the fs-loader rustnix submodule. Anything else in the directory <master>/disk will also have been loaded to /.
