@@ -28,8 +28,8 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 use crate::{
-    internal::{ata::{read, write, BLOCK_SIZE}, clk, file::{FileError, FileFlags, FileSystem, Stream}},
-    kprintln,
+    internal::{ata::{read, write, BLOCK_SIZE}, clk, file::{FileError, FileFlags, FileSystem, Stream, ALL_FLAGS}, syscall::service::close},
+    kprintln, serial_print,
 };
 
 use log::trace;
@@ -1130,6 +1130,7 @@ impl Stream for FileHandle {
         // we know data will be a multiple of 512 bytes
 
         let len = buf.len().min(data.len() - self.file_pos);
+
         buf.copy_from_slice(&data[self.file_pos..self.file_pos + len]);
 
         self.file_pos += len;
@@ -1529,7 +1530,9 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
 /// load the filesystem
 pub fn init() {
     trace!("Initializing filesystems");
-    load_fs(0, 1).unwrap();
+
+    #[cfg(not(test))] // during tests, we don't want to load the filesystem, as we don't currently attach a disk
+    load_fs(0, 1);
 }
 
 /// test the creation of a file
@@ -1563,15 +1566,13 @@ fn test_create_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+    FILESYSTEMS.lock().insert((0,0), fs.clone());
 
-    fs.open("test.txt", FileFlags::Create as u8).unwrap();
+
+    fs.open("test.txt", ALL_FLAGS).unwrap();
     assert!(fs.exists("test.txt"));
-
-    FILESYSTEMS.lock().remove(&(0, 0));
 }
 
-/// test the writing of a file
 #[test_case]
 fn test_write_file() {
     let mut fs = VirtFs {
@@ -1602,27 +1603,22 @@ fn test_write_file() {
         open_files: Vec::new(),
     };
 
+
+    fs.phys_fs.create_file("test.txt", [0, 0, 0], 0).unwrap();
+
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
-    fs.open("test.txt", FileFlags::Create as u8).unwrap();
-
     let data = b"Hello, world!";
-    fs.open("test.txt", FileFlags::Write as u8)
-        .expect("Failed to open file")
-        .write(data)
-        .expect("Failed to write to file");
+    fs.open("test.txt", FileFlags::Write as u8).expect("Failed to open file").write(data).expect("Failed to write to file");
 
-    // only the first 32 bytes will be returned to us
-    let mut buf = [0; 32];
-    fs.open("test.txt", FileFlags::Read as u8)
-        .expect("Failed to open file")
-        .read(&mut buf)
-        .expect("Failed to read from file");
+    let mut buf = [0; 512];
+    fs.open("test.txt", FileFlags::Read as u8).expect("Failed to open file").read(&mut buf).expect("Failed to read from file");
 
     assert_eq!(&buf[..data.len()], data);
 
     FILESYSTEMS.lock().remove(&(0, 0));
 }
+
 
 /// test chmod
 #[test_case]
@@ -1655,9 +1651,9 @@ fn test_chmod_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+    FILESYSTEMS.lock().insert((0,0), fs.clone());
 
-    fs.open("test.txt", FileFlags::Create as u8).unwrap();
+    fs.open("test.txt", ALL_FLAGS).unwrap();
 
     fs.chmod("test.txt", [1, 1, 1]).unwrap();
     let perms = fs.get_perms("test.txt").unwrap();
@@ -1695,9 +1691,10 @@ fn test_chown_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+    FILESYSTEMS.lock().insert((0,0), fs.clone());
 
-    fs.open("test.txt", FileFlags::Create as u8).unwrap();
+
+    fs.open("test.txt", ALL_FLAGS).unwrap();
 
     fs.chown("test.txt", 1).unwrap();
     let owner = fs.get_owner("test.txt").unwrap();
@@ -1737,9 +1734,10 @@ fn test_delete_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0, 0), fs.clone());
+    FILESYSTEMS.lock().insert((0,0), fs.clone());
 
-    fs.open("test.txt", FileFlags::Create as u8).unwrap();
+
+    fs.open("test.txt", ALL_FLAGS).unwrap();
 
     fs.delete("test.txt").unwrap();
     assert_eq!(fs.exists("test.txt"), false);

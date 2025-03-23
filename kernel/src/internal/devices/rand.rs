@@ -89,8 +89,8 @@ fn test_rand() {
     // we'll just ignore this edge case (hypothetically, it could fail, but it's very unlikely (1 in 2^4096))
     assert_eq!(buf.iter().all(|&x| x == 0), false);
     assert_eq!(
-        rand.write(&buf).unwrap_err().to_string(),
-        "WriteError: Cannot write to random device"
+        rand.write(&buf).unwrap_err(),
+        crate::internal::file::FileError::WriteError(FsError::UnwritableFile.into())
     );
     assert_eq!(rand.flush().unwrap(), ());
     assert_eq!(rand.close().unwrap(), ());

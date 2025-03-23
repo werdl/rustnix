@@ -191,6 +191,7 @@ pub fn init(boot_info: &'static BootInfo) {
     gdt::init();
     vga::info("GDT initialized");
 
+
     interrupts::init_idt();
     vga::info("IDT initialized");
 
@@ -212,16 +213,18 @@ pub fn init(boot_info: &'static BootInfo) {
     keyboard::init();
     info!("Console initialized");
 
+
     ata::init();
     info!("ATA initialized");
 
+    #[cfg(not(test))] // tests don't have attached disk
     fs::init();
     info!("Filesystem initialized");
 
     acpi::init();
     info!("ACPI initialized");
 
-    system_msg!("Kernel initialized in {} ms", clk::get_boot_time_ns() / 1_000_000);
+    serial_print!("Kernel initialized in {} ms", clk::get_boot_time_ns() / 1_000_000);
 
     #[cfg(feature = "ascii-art")]
     {

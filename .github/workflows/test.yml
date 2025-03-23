@@ -50,7 +50,11 @@ jobs:
           ${{ runner.os }}-cargo-index-
 
     - name: Build
-      run: cargo +nightly build --verbose
+      run: |
+        cd kernel
+        cargo +nightly build --verbose
 
     - name: Run tests
-      run: cargo +nightly test --verbose
+      run: |
+        cd kernel
+        cargo +nightly test --verbose

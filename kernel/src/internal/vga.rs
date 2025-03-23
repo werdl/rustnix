@@ -8,6 +8,8 @@ use spin::Mutex;
 use volatile::Volatile;
 use x86_64::instructions::interrupts;
 
+use crate::serial_print;
+
 #[allow(dead_code)]
 #[allow(missing_docs)] // no need to document this, only colours
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

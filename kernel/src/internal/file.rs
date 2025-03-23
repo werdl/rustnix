@@ -10,15 +10,15 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use super::{fs::FsError, syscall::Error};
 
 /// FileInner is a struct that contains the error and an optional message
-#[derive(Debug)]
-pub struct FileInner {
+#[derive(Debug, PartialEq)]
+pub struct FileErrorInner {
     fs_error: FsError,
     message: Option<String>,
 }
 
-impl From<FsError> for FileInner {
+impl From<FsError> for FileErrorInner {
     fn from(fs_error: FsError) -> Self {
-        FileInner {
+        FileErrorInner {
             fs_error: fs_error,
             message: None,
         }
@@ -26,20 +26,20 @@ impl From<FsError> for FileInner {
 }
 
 /// FileError is an enum that contains all the possible errors that can occur when working with files
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum FileError {
     /// Error reading from a file
-    ReadError(FileInner),
+    ReadError(FileErrorInner),
     /// Error writing to a file
-    WriteError(FileInner),
+    WriteError(FileErrorInner),
     /// Error closing a file
-    CloseError(FileInner),
+    CloseError(FileErrorInner),
     /// Error flushing a file
-    FlushError(FileInner),
+    FlushError(FileErrorInner),
     /// Error with permissions
-    PermissionError(FileInner),
+    PermissionError(FileErrorInner),
     /// File not found
-    NotFoundError(FileInner),
+    NotFoundError(FileErrorInner),
 }
 
 impl From<FsError> for FileError {
@@ -181,6 +181,9 @@ pub enum FileFlags {
     /// Device flag - open a device file
     Device = 32,
 }
+
+/// ALL_FLAGS is a constant that contains all the flags
+pub const ALL_FLAGS: u8 = 63; // 1 + 2 + 4 + 8 + 16 + 32
 
 impl FileFlags {
     /// check if a flag is set

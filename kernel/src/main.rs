@@ -10,7 +10,7 @@ use core::panic::PanicInfo;
 
 use alloc::vec;
 use bootloader::{BootInfo, entry_point};
-use rustnix::{internal::file::FileFlags, syscall};
+use rustnix::{exit_qemu, internal::file::FileFlags, syscall};
 
 #[allow(unused_imports)]
 use rustnix::kprintln;
