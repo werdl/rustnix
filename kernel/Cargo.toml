@@ -3,6 +3,7 @@ name = "rustnix"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
 acpi = "5.2.0"
 aml = "0.16.4"

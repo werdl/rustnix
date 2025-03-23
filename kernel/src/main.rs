@@ -38,19 +38,16 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     test_main();
 
 
-    // print inode table
-    kprintln!("inode table (only first 10 entries): {:?}", rustnix::internal::fs::FILESYSTEMS.lock().get(&(0,1)).unwrap().phys_fs.data_blocks[2].data[0..10].to_vec());
-
-    // read from file1
+    // read from /README
     let mut buf = vec![0; 512];
-    let file1 = syscall::service::open("file1", FileFlags::Read as u8);
+    let readme = syscall::service::open("/README", FileFlags::Read as u8);
     kprintln!("errno: {}", syscall!(syscall::GETERRNO));
-    let res = syscall::service::read(file1 as usize, &mut buf);
-    kprintln!("fd, res: {}, {}", file1, res);
+    let res = syscall::service::read(readme as usize, &mut buf);
+    kprintln!("fd, res: {}, {}", readme, res);
 
     kprintln!("errno: {}", syscall!(syscall::GETERRNO));
 
-    // kprintln!("Data read from file1: {:?}", buf);
+    kprintln!("Data read from README: {:?}", core::str::from_utf8(&buf).unwrap());
 
     loop {}
 

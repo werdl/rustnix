@@ -216,7 +216,7 @@ impl PhysFs {
     fn allocate_single_indirect_block(&mut self, inode: &mut Inode, block_num: u64) {
         if inode.single_indirect_block_pointer == 0 {
             inode.single_indirect_block_pointer = self
-                .find_empty_data_block()
+                .find_empty_data_block(None)
                 .expect("Block allocation failed");
         }
         let block_index = (block_num % POINTERS_PER_BLOCK as u64) as usize;
@@ -224,14 +224,14 @@ impl PhysFs {
         let pointers: &mut [u64; POINTERS_PER_BLOCK] =
             unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
         pointers[block_index] = self
-            .find_empty_data_block()
+            .find_empty_data_block(Some(pointers.to_vec()))
             .expect("Block allocation failed");
     }
 
     fn allocate_double_indirect_block(&mut self, inode: &mut Inode, block_num: u64) {
         if inode.double_indirect_block_pointer == 0 {
             inode.double_indirect_block_pointer = self
-                .find_empty_data_block()
+                .find_empty_data_block(None)
                 .expect("Block allocation failed");
         }
         let block_index = (block_num / POINTERS_PER_BLOCK as u64) as usize;
@@ -240,7 +240,7 @@ impl PhysFs {
             unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
         if pointers[block_index] == 0 {
             pointers[block_index] = self
-                .find_empty_data_block()
+                .find_empty_data_block(Some(pointers.to_vec()))
                 .expect("Block allocation failed");
         }
         self.allocate_single_indirect_block(
@@ -255,7 +255,7 @@ impl PhysFs {
     fn allocate_triple_indirect_block(&mut self, inode: &mut Inode, block_num: u64) {
         if inode.triple_indirect_block_pointer == 0 {
             inode.triple_indirect_block_pointer = self
-                .find_empty_data_block()
+                .find_empty_data_block(None)
                 .expect("Block allocation failed");
         }
         let block_index =
@@ -265,7 +265,7 @@ impl PhysFs {
             unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
         if pointers[block_index] == 0 {
             pointers[block_index] = self
-                .find_empty_data_block()
+                .find_empty_data_block(Some(pointers.to_vec()))
                 .expect("Block allocation failed");
         }
         self.allocate_double_indirect_block(
@@ -643,9 +643,9 @@ impl PhysFs {
         Ok(())
     }
 
-    fn find_empty_data_block(&self) -> Result<u64, FsError> {
+    fn find_empty_data_block(&self, ignore: Option<Vec<u64>>) -> Result<u64, FsError> {
         for i in 1..self.superblock.num_data_blocks {
-            if self.data_blocks[i as usize].data == [0; 512] {
+            if self.data_blocks[i as usize].data == [0; 512] && !ignore.as_ref().map_or(false, |v| v.contains(&i)) {
                 // possibility that it is used, and just happens to be empty
                 // check if it is actually used
                 let mut used = false;
@@ -713,7 +713,7 @@ impl PhysFs {
             file_name: [0; 384],
         };
 
-        let data_block = self.find_empty_data_block()?;
+        let data_block = self.find_empty_data_block(None)?;
         inode.data_block_pointers[0] = data_block;
         inode.file_name[..file_name.len()].copy_from_slice(file_name.as_bytes());
 
@@ -791,8 +791,6 @@ impl PhysFs {
             padded[..arr.len()].copy_from_slice(arr);
             padded
         }
-
-        kprintln!("filename: {:?}, {}", file_name.as_bytes(), file_name);
 
         self.inode_table
             .iter()
@@ -890,7 +888,7 @@ impl PhysFs {
             if (i as usize) < existing_data_blocks.len() {
                 data_blocks_pointers[i as usize] = existing_data_blocks[i as usize];
             } else {
-                let data_block = self.find_empty_data_block()?;
+                let data_block = self.find_empty_data_block(Some(data_blocks_pointers.clone()))?;
                 data_blocks_pointers[i as usize] = data_block;
             }
         }
@@ -934,7 +932,7 @@ impl PhysFs {
                     unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
                 if pointers[block_index] == 0 {
                     pointers[block_index] = self
-                        .find_empty_data_block()
+                        .find_empty_data_block(Some(pointers.to_vec()))
                         .expect("Block allocation failed");
                 }
                 self.allocate_single_indirect_block(
@@ -966,7 +964,7 @@ impl PhysFs {
                     unsafe { &mut *(block.data.as_mut_ptr() as *mut [u64; POINTERS_PER_BLOCK]) };
                 if pointers[block_index] == 0 {
                     pointers[block_index] = self
-                        .find_empty_data_block()
+                        .find_empty_data_block(Some(pointers.to_vec()))
                         .expect("Block allocation failed");
                 }
                 self.allocate_double_indirect_block(

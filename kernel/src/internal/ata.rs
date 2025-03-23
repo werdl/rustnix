@@ -431,7 +431,6 @@ pub fn write(bus: u8, drive: u8, block: u32, buf: &[u8]) -> Result<(), ()> {
 
 /// Get the bus and drive of the most likely disk (the one with the most blocks)
 pub fn likely_disk() -> Result<(u8, u8), ()> {
-    return Ok((0, 1));
     let drives = list();
     if drives.len() == 0 {
         return Err(());
