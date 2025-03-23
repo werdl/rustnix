@@ -14,7 +14,7 @@
 - [x] Basic inode-based filesystem
 - [x] Clock module
 - [x] Basic async/await support
-- [ ] Syscalls
+- [x] Syscalls
 - [ ] Processes
 - [ ] ELF Binaries
 - [ ] Basic Userspace

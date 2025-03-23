@@ -2,6 +2,7 @@
 #![cfg_attr(test, no_main)]
 #![feature(custom_test_frameworks)]
 #![feature(abi_x86_interrupt)]
+#![feature(naked_functions)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -10,7 +11,12 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
-use internal::{ata, clk, gdt, interrupts, keyboard, memory, syscall, vga, acpi};
+use internal::{acpi, ata, clk, gdt, interrupts, keyboard, memory, syscall, vga};
+pub use {
+    syscall::ALLOC, syscall::CLOSE, syscall::EXEC, syscall::EXIT, syscall::FLUSH, syscall::FREE,
+    syscall::GETERRNO, syscall::GETPID, syscall::KIND, syscall::OPEN, syscall::READ,
+    syscall::SLEEP, syscall::WAIT, syscall::WRITE,
+};
 
 use core::panic::PanicInfo;
 
@@ -121,7 +127,6 @@ impl log::Log for SerialLogger {
     }
 }
 
-
 use log::LevelFilter;
 
 #[cfg(feature = "trace_log")]
@@ -136,9 +141,16 @@ const LOG_LEVEL: LevelFilter = LevelFilter::Warn;
 #[cfg(feature = "error_log")]
 const LOG_LEVEL: LevelFilter = LevelFilter::Error;
 
-#[cfg(all(feature = "info_log", not(any(feature = "trace_log", feature = "debug_log", feature = "warn_log", feature = "error_log"))))]
+#[cfg(all(
+    feature = "info_log",
+    not(any(
+        feature = "trace_log",
+        feature = "debug_log",
+        feature = "warn_log",
+        feature = "error_log"
+    ))
+))]
 const LOG_LEVEL: LevelFilter = LevelFilter::Info;
-
 
 pub fn init_logger() {
     log::set_logger(&SerialLogger)
@@ -146,8 +158,7 @@ pub fn init_logger() {
         .unwrap();
 }
 
-pub static ASCII_ART: &str =
-r"______          _         _
+pub static ASCII_ART: &str = r"______          _         _
 | ___ \        | |       (_)
 | |_/ /   _ ___| |_ _ __  ___  __
 |    / | | / __| __| '_ \| \ \/ /
@@ -216,7 +227,6 @@ pub fn init(boot_info: &'static BootInfo) {
         write_str_rainbow(ASCII_ART);
         kprintln!();
     }
-
 }
 
 pub fn hlt_loop() -> ! {

@@ -1,6 +1,6 @@
 use crate::internal::gdt;
+use crate::internal::{interrupts, syscall};
 use crate::kprint;
-use crate::internal::interrupts;
 use lazy_static::lazy_static;
 use log::{error, trace, warn};
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
@@ -15,6 +15,11 @@ lazy_static! {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+
+            let f = wrapped_syscall_handler as *mut fn();
+            idt[0x80].
+                set_handler_fn(core::mem::transmute(f)).
+                set_privilege_level(x86_64::PrivilegeLevel::Ring3);
         }
         idt[InterruptIndex::Timer.as_u8()].set_handler_fn(timer_interrupt_handler);
         idt.page_fault.set_handler_fn(page_fault_handler);
@@ -133,6 +138,8 @@ fn test_breakpoint_exception() {
 use pic8259::ChainedPics;
 use spin;
 
+use super::process;
+
 /// Offset for the controller PIC
 pub const PIC_1_OFFSET: u8 = 32;
 /// Offset for the worker PIC
@@ -156,4 +163,62 @@ impl InterruptIndex {
     fn as_u8(self) -> u8 {
         self as u8
     }
+}
+
+// Naked function wrapper saving all scratch registers to the stack
+// See: https://os.phil-opp.com/returning-from-exceptions/
+macro_rules! wrap {
+    ($fn: ident => $w:ident) => {
+        #[naked]
+        pub unsafe extern "sysv64" fn $w() {
+            unsafe {core::arch::naked_asm!(
+                "push rax",
+                "push rcx",
+                "push rdx",
+                "push rsi",
+                "push rdi",
+                "push r8",
+                "push r9",
+                "push r10",
+                "push r11",
+                "mov rsi, rsp", // Arg #2: register list
+                "mov rdi, rsp", // Arg #1: interupt frame
+                "add rdi, 9 * 8", // 9 registers * 8 bytes
+                "call {}",
+                "pop r11",
+                "pop r10",
+                "pop r9",
+                "pop r8",
+                "pop rdi",
+                "pop rsi",
+                "pop rdx",
+                "pop rcx",
+                "pop rax",
+                "iretq",
+                sym $fn
+            );}
+        }
+    };
+}
+
+wrap!(syscall_handler => wrapped_syscall_handler);
+
+extern "sysv64" fn syscall_handler(_stack_frame: &mut InterruptStackFrame, regs: &mut process::Registers) {
+    let n = regs.rax;
+
+    // The registers order follow the System V ABI convention
+    let arg1 = regs.rdi;
+    let arg2 = regs.rsi;
+    let arg3 = regs.rdx;
+    let arg4 = regs.r8;
+
+    // Backup CPU context before spawning a process - not needed right now
+
+    let res = syscall::dispatch(n as usize, arg1, arg2, arg3, arg4);
+
+    regs.rax = res;
+
+    // Restore CPU context before exiting a process - not needed right now
+
+    unsafe { PICS.lock().notify_end_of_interrupt(0x80) };
 }

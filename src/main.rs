@@ -9,6 +9,8 @@ extern crate alloc;
 use core::panic::PanicInfo;
 
 use bootloader::{BootInfo, entry_point};
+use rustnix::syscall;
+
 #[allow(unused_imports)]
 use rustnix::kprintln;
 
@@ -32,6 +34,9 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
+
+    // allocate 1024 bytes of memory
+    syscall!(rustnix::ALLOC, 1024, 1);
 
     loop {}
 

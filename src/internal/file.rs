@@ -137,9 +137,9 @@ impl From<FileError> for Error {
 /// IOEvent is an enum that contains the possible events that can occur when reading or writing to a file
 pub enum IOEvent {
     /// Read event
-    Read,
+    Read = 1,
     /// Write event
-    Write,
+    Write = 2,
 }
 
 /// Stream is a trait that contains the functions that need to be implemented when reading or writing to a file

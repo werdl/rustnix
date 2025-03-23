@@ -14,7 +14,7 @@ use crate::{internal::{
 use super::{console::Console, devices::null::Null, fs::FileHandle};
 
 /// File table
-pub static FILES: Mutex<BTreeMap<i8, File>> = Mutex::new(BTreeMap::new());
+pub static FILES: Mutex<BTreeMap<isize, File>> = Mutex::new(BTreeMap::new());
 
 /// stdout
 #[derive(Debug)]

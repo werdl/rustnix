@@ -69,7 +69,7 @@ fn interrupt_handler() {
                 DecodedKey::Unicode(c) => {
                     if is_ctrl && is_alt && c =='\x08' { // Ctrl-Alt-Backspace, as delete is not supported by qemu (maps to 46 for some reasons)
                         system_msg!("Rebooting...");
-                        crate::internal::syscall::stop(1);
+                        crate::internal::acpi::shutdown();
                     }
                     handle_key(c);
                 },
