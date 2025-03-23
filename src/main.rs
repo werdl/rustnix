@@ -8,11 +8,13 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
+use alloc::vec;
 use bootloader::{BootInfo, entry_point};
-use rustnix::syscall;
+use rustnix::{internal::file::FileFlags, syscall};
 
 #[allow(unused_imports)]
 use rustnix::kprintln;
+use rustnix::internal::syscall;
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -35,8 +37,20 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     #[cfg(test)]
     test_main();
 
-    // allocate 1024 bytes of memory
-    syscall!(rustnix::ALLOC, 1024, 1);
+
+    // print inode table
+    kprintln!("inode table (only first 10 entries): {:?}", rustnix::internal::fs::FILESYSTEMS.lock().get(&(0,1)).unwrap().phys_fs.data_blocks[2].data[0..10].to_vec());
+
+    // read from file1
+    let mut buf = vec![0; 512];
+    let file1 = syscall::service::open("file1", FileFlags::Read as u8);
+    kprintln!("errno: {}", syscall!(syscall::GETERRNO));
+    let res = syscall::service::read(file1 as usize, &mut buf);
+    kprintln!("fd, res: {}, {}", file1, res);
+
+    kprintln!("errno: {}", syscall!(syscall::GETERRNO));
+
+    // kprintln!("Data read from file1: {:?}", buf);
 
     loop {}
 

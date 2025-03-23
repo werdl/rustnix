@@ -11,7 +11,7 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
-use internal::{acpi, ata, clk, gdt, interrupts, keyboard, memory, syscall, vga};
+use internal::{acpi, ata, clk, fs, gdt, interrupts, keyboard, memory, syscall, vga};
 pub use {
     syscall::ALLOC, syscall::CLOSE, syscall::EXEC, syscall::EXIT, syscall::FLUSH, syscall::FREE,
     syscall::GETERRNO, syscall::GETPID, syscall::KIND, syscall::OPEN, syscall::READ,
@@ -214,6 +214,9 @@ pub fn init(boot_info: &'static BootInfo) {
 
     ata::init();
     info!("ATA initialized");
+
+    fs::init();
+    info!("Filesystem initialized");
 
     acpi::init();
     info!("ACPI initialized");

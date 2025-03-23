@@ -28,10 +28,11 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 
 use crate::{
-    internal::ata::{BLOCK_SIZE, read, write},
-    internal::clk,
-    internal::file::{FileError, FileFlags, FileSystem, Stream},
+    internal::{ata::{read, write, BLOCK_SIZE}, clk, file::{FileError, FileFlags, FileSystem, Stream}},
+    kprintln,
 };
+
+use log::trace;
 
 use alloc::{
     boxed::Box,
@@ -64,7 +65,7 @@ struct Superblock {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-struct Inode {
+pub struct Inode {
     num_data_blocks: u64,
     data_block_pointers: [u64; 12],
     // points to a block that contains pointers to data blocks
@@ -97,7 +98,7 @@ pub struct FileMetadata {
 #[derive(Debug, Clone)]
 pub struct PhysFs {
     superblock: Superblock,
-    inode_table: Vec<Inode>,
+    pub inode_table: Vec<Inode>,
     /// the data blocks
     pub data_blocks: Vec<DataBlock>,
 }
@@ -779,6 +780,8 @@ impl PhysFs {
             data.extend_from_slice(data_block);
         }
 
+        trace!("data: {:?}", data[0..10].to_vec());
+
         Ok((data, metadata))
     }
 
@@ -788,6 +791,8 @@ impl PhysFs {
             padded[..arr.len()].copy_from_slice(arr);
             padded
         }
+
+        kprintln!("filename: {:?}, {}", file_name.as_bytes(), file_name);
 
         self.inode_table
             .iter()
@@ -1475,6 +1480,10 @@ pub fn get_first_good_fs() -> Result<(usize, usize), FileError> {
     }
 }
 
+pub fn load_fs(bus: usize, dsk: usize) -> Result<(), FileError> {
+    VirtFs::from_disk(bus, dsk).map_err(|f| f.into())
+}
+
 /// add a filesystem to the list of filesystems
 pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), FileError> {
     let mut file_systems = FILESYSTEMS.lock();
@@ -1517,6 +1526,12 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
     } else {
         Err(FileError::NotFoundError(FsError::FilesystemNotFound.into()))
     }
+}
+
+/// load the filesystem
+pub fn init() {
+    trace!("Initializing filesystems");
+    load_fs(0, 1).unwrap();
 }
 
 /// test the creation of a file

@@ -142,7 +142,7 @@ pub const TIME: usize = 0x18;
 /// seek to a position in a file descriptor - `seek(fd, pos)`
 pub const SEEK: usize = 0x19;
 
-mod service;
+pub mod service;
 pub use service::init;
 
 /// Dispatch a syscall, given the syscall number and arguments

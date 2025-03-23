@@ -22,10 +22,10 @@ if [[ ! $? -eq 0 ]]; then
 fi
 
 kernel="target/x86_64-rustnix/debug/bootimage-rustnix.bin"
-disk_image="target/x86_64-rustnix/debug/disk.img"
+disk_image="newdisk.img"
 
 # Create a disk image
-dd if=/dev/zero of=$disk_image bs=1M count=64
+#dd if=/dev/zero of=$disk_image bs=1M count=64
 
 # Run QEMU with the kernel binary and the disk image as a second drive
 qemu-system-x86_64 -drive file=$kernel,format=raw  -drive file=$disk_image,format=raw -serial stdio
