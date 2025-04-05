@@ -1,19 +1,37 @@
 use spin::Once;
 use x86_64::structures::paging::page_table::FrameError;
-use x86_64::structures::paging::{OffsetPageTable, PageTable};
+use x86_64::structures::paging::{Mapper, OffsetPageTable, PageTable, PageTableFlags};
 use x86_64::{PhysAddr, VirtAddr};
+use log::warn;
 
 /// The offset of the physical memory
 static PHYSICAL_MEMORY_OFFSET: Once<u64> = Once::new(); // will get overwritten by init
+static MEMORY_MAP: Once<&'static bootloader::bootinfo::MemoryMap> = Once::new(); // will get overwritten by init
 
-unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
+pub fn physical_memory_offset() -> VirtAddr {
+    VirtAddr::new(
+        *PHYSICAL_MEMORY_OFFSET
+            .get()
+            .expect("Couldn't fetch physical memory offset"),
+    )
+}
+
+pub unsafe fn active_level_4_table() -> &'static mut PageTable {
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
 
     let phys = level_4_table_frame.start_address();
-    let virt = physical_memory_offset + phys.as_u64();
+    let virt = physical_memory_offset() + phys.as_u64();
     let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
 
-    unsafe { &mut *page_table_ptr } // unsafe bit
+    unsafe { &mut *page_table_ptr }
+}
+
+pub unsafe fn active_page_table() -> &'static mut PageTable {
+    let phys = x86_64::registers::control::Cr3::read().0.start_address();
+    let virt = VirtAddr::new(phys.as_u64());
+    let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
+
+    unsafe { &mut *page_table_ptr }
 }
 
 /// Translates the given virtual address to the mapped physical address
@@ -62,7 +80,7 @@ fn translate_addr_inner(addr: VirtAddr, physical_memory_offset: VirtAddr) -> Opt
 unsafe fn init_page_table(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     let _ = *PHYSICAL_MEMORY_OFFSET.call_once(|| physical_memory_offset.as_u64());
 
-    let level_4_table = unsafe { active_level_4_table(physical_memory_offset) };
+    let level_4_table = unsafe { active_level_4_table() };
 
     unsafe { OffsetPageTable::new(level_4_table, physical_memory_offset) }
 }
@@ -126,6 +144,74 @@ pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
     let mut mapper = unsafe { init_page_table(phys_mem_offset) };
     let mut frame_allocator = BootInfoFrameAllocator::init(&boot_info.memory_map);
 
+    MEMORY_MAP.call_once(|| &boot_info.memory_map);
+
     crate::internal::allocator::init_heap(&mut mapper, &mut frame_allocator)
         .expect("heap initialization failed");
+}
+
+pub fn create_page_table(frame: PhysFrame) -> &'static mut PageTable {
+    let phys_addr = frame.start_address();
+    let virt_addr = reverse_translate(phys_addr);
+    let page_table_ptr: *mut PageTable = virt_addr.as_mut_ptr();
+    unsafe { &mut *page_table_ptr }
+}
+
+pub fn frame_allocator() -> BootInfoFrameAllocator {
+    unsafe { BootInfoFrameAllocator::init(MEMORY_MAP.get_unchecked()) }
+}
+
+pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: usize, size: usize) -> Result<(), ()> {
+    let size = size.saturating_sub(1) as u64;
+
+    let pages = {
+        let start_page = Page::containing_address(VirtAddr::new(addr as u64));
+        let end_page = Page::containing_address(VirtAddr::new(addr as u64 + size));
+        Page::range_inclusive(start_page, end_page)
+    };
+
+    let flags =
+        PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+
+    let mut frame_allocator = frame_allocator();
+
+    for page in pages {
+        if let Some(frame) = frame_allocator.allocate_frame() {
+            let res = unsafe {
+                mapper.map_to(page, frame, flags, &mut frame_allocator)
+            };
+            if let Ok(mapping) = res {
+                mapping.flush();
+            } else {
+                warn!("Could not map {:?} to {:?}", page, frame);
+                if let Ok(old_frame) = mapper.translate_page(page) {
+                    warn!("Already mapped to {:?}", old_frame);
+                }
+                return Err(());
+            }
+        } else {
+            warn!("Could not allocate frame for {:?}", page);
+            return Err(());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn free_pages(mapper: &mut OffsetPageTable, addr: usize , size: usize) {
+    let size = size.saturating_sub(1) as u64;
+
+    let pages = {
+        let start_page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(addr as u64));
+        let end_page = Page::containing_address(VirtAddr::new(addr as u64 + size));
+        Page::range_inclusive(start_page, end_page)
+    };
+
+    for page in pages {
+        if let Ok(mapping) = mapper.unmap(page) {
+            mapping.1.flush();
+        } else {
+            warn!("Could not unmap {:?}", page);
+        }
+    }
 }

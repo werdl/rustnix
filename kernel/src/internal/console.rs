@@ -21,7 +21,7 @@ pub const END_OF_TRANSMISSION: char = '\x04';
 pub const ESC: char = '\x1B';
 
 /// Console struct
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Console;
 
 /// should input be echoed to the screen

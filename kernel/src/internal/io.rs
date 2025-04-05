@@ -17,7 +17,7 @@ use super::{console::Console, devices::null::Null, fs::FileHandle};
 pub static FILES: Mutex<BTreeMap<isize, File>> = Mutex::new(BTreeMap::new());
 
 /// stdout
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Stdout;
 
 impl Stdout {
@@ -55,7 +55,7 @@ impl Stream for Stdout {
 }
 
 /// stderr
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Stderr;
 
 impl Stderr {
@@ -93,7 +93,7 @@ impl Stream for Stderr {
 }
 
 /// Device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Device {
     /// stdin device
     Stdin(Console),
@@ -143,7 +143,7 @@ impl TryFrom<(u8, u8)> for Device {
 }
 
 /// a file, which could be a normal file, a stream, or a device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum File {
     /// A normal file
     File(FileHandle),

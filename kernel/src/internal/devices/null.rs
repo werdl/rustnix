@@ -5,7 +5,7 @@ use crate::internal::{
 };
 
 /// Null device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Null {
     inner: zero::Zero,
 }

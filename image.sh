@@ -2,7 +2,7 @@
 
 set -e  # Exit on any error
 
-trap 'cd ../' ERR # cd back to parent on error
+trap 'echo failed && cd ../' ERR # cd back to parent on error
 
 cd kernel
 
@@ -27,6 +27,7 @@ cd fs-loader
 touch disk.img
 cargo run
 cd ../
+
 
 trap - ERR # we don't want to go any further
 

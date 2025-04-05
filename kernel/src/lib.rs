@@ -11,7 +11,7 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
-use internal::{acpi, ata, clk, fs, gdt, interrupts, keyboard, memory, syscall, vga};
+use internal::{acpi, ata, clk, fs, gdt, interrupts, keyboard, memory, syscall, user, vga};
 pub use {
     syscall::ALLOC, syscall::CLOSE, syscall::EXEC, syscall::EXIT, syscall::FLUSH, syscall::FREE,
     syscall::GETERRNO, syscall::GETPID, syscall::KIND, syscall::OPEN, syscall::READ,
@@ -223,6 +223,9 @@ pub fn init(boot_info: &'static BootInfo) {
 
     acpi::init();
     info!("ACPI initialized");
+
+    user::init();
+    info!("Users initialized");
 
     serial_print!("Kernel initialized in {} ms", clk::get_boot_time_ns() / 1_000_000);
 

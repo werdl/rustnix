@@ -228,7 +228,7 @@ pub trait FileSystem {
 }
 
 /// turn a relative path into an absolute path
-pub fn absolute_path(path: &str) -> String {
+pub fn canonicalise(path: &str) -> String {
     if path.starts_with("/") {
         return path.into();
     }

@@ -4,7 +4,7 @@ use crate::internal::{
 };
 
 /// Zero device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Zero {
     /// File flags
     pub flags: u8,

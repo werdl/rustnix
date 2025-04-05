@@ -36,3 +36,5 @@ pub mod syscall;
 pub mod task;
 /// vga module, handles vga output
 pub mod vga;
+/// user handling module
+pub mod user;

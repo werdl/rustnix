@@ -1131,7 +1131,7 @@ impl Stream for FileHandle {
 
         let len = buf.len().min(data.len() - self.file_pos);
 
-        buf.copy_from_slice(&data[self.file_pos..self.file_pos + len]);
+        buf[..len].copy_from_slice(&data[self.file_pos..self.file_pos + len]);
 
         self.file_pos += len;
 
@@ -1457,6 +1457,16 @@ impl FileSystem for VirtFs {
         }
         Ok(files)
     }
+}
+
+/// get the required buffer size for a given file
+pub fn get_buffer_size(bus: usize, dsk: usize, path: &str) -> Result<usize, FileError> {
+    let mut file_systems = FILESYSTEMS.lock();
+    let fs = file_systems
+        .get_mut(&(bus, dsk))
+        .ok_or(FileError::NotFoundError(FsError::FilesystemNotFound.into()))?;
+    let (data, _) = fs.phys_fs.read_file(path)?;
+    Ok(data.len())
 }
 
 /// get the selected filesystem as a mutable reference

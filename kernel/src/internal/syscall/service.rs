@@ -1,3 +1,7 @@
+use alloc::{vec, vec::Vec};
+
+use crate::internal::{file::FileFlags, fs::get_buffer_size};
+
 use super::*;
 
 fn set_errno(errno: Error) {
@@ -56,7 +60,7 @@ fn open_block_device(device_path: &str) -> isize {
 
 /// open a file (OPEN)
 pub fn open(path: &str, flags: u8) -> isize {
-    let path = &file::absolute_path(path);
+    let path = &file::canonicalise(path);
     if path.starts_with("/dev/") {
         return open_block_device(path);
     }
@@ -257,4 +261,47 @@ pub fn nanos() -> usize {
 /// get the number of seconds since 1970-01-01T00:00:00Z (TIME)
 pub fn time() -> u64 {
     crate::internal::clk::get_unix_time()
+}
+
+/// spawn a new process (SPAWN)
+pub fn spawn(path: &str, args: &[&str]) -> isize {
+    let path = crate::internal::file::canonicalise(path);
+
+    // use open syscall to open the file
+    let fd = open(&path, FileFlags::Read as u8);
+
+    if fd < 0 {
+        return -1;
+    }
+
+
+    let buf_size = get_buffer_size(0, 1, &path);
+    if buf_size.is_err() {
+        close(fd as usize);
+        set_errno(Error::EINVAL);
+        return -1;
+    }
+
+    // read the file into a buffer
+    let mut buf = vec![0; buf_size.unwrap()];
+    let bytes_read = read(fd as usize, &mut buf);
+    if bytes_read < 0 {
+        close(fd as usize);
+        return -1;
+    }
+    let bytes_read = bytes_read as usize;
+    let buf = &buf[..bytes_read];
+    close(fd as usize);
+    // parse the buffer into a process
+
+    let args_ptr = args.as_ptr() as usize;
+
+    let args_len = args.len() as u64;
+
+    crate::internal::process::Process::spawn(
+        buf,
+        args_ptr as usize,
+        args_len as usize,
+    );
+    0
 }

@@ -10,7 +10,7 @@ use core::panic::PanicInfo;
 
 use alloc::vec;
 use bootloader::{BootInfo, entry_point};
-use rustnix::{exit_qemu, internal::file::FileFlags, syscall};
+use rustnix::{exit_qemu, internal::file::FileFlags, syscall, OPEN, WRITE};
 
 #[allow(unused_imports)]
 use rustnix::kprintln;
@@ -38,16 +38,12 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     test_main();
 
 
-    // read from /README
     let mut buf = vec![0; 512];
-    let readme = syscall::service::open("/README", FileFlags::Read as u8);
-    kprintln!("errno: {}", syscall!(syscall::GETERRNO));
-    let res = syscall::service::read(readme as usize, &mut buf);
-    kprintln!("fd, res: {}, {}", readme, res);
+    // insert string to write into buffer
+    let data = b"Hello from the other side!";
+    buf[..data.len()].copy_from_slice(data);
 
-    kprintln!("errno: {}", syscall!(syscall::GETERRNO));
-
-    kprintln!("Data read from README: {:?}", core::str::from_utf8(&buf).unwrap());
+    syscall!(WRITE, 1, buf.as_ptr() as usize, 26); // write to /dev/stdout
 
     loop {}
 

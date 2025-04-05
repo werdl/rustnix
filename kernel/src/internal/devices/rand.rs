@@ -9,7 +9,7 @@ use crate::internal::file::{FileFlags, Stream};
 use crate::internal::fs::FsError;
 
 /// The random device
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rand {
     inner: SmallRng,
     flags: u8,

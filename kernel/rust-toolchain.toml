@@ -1,0 +1,3 @@
+[toolchain]
+channel = "nightly-2024-12-01" # no idea why latest nightly doesn't work
+components = ["rust-src", "llvm-tools-preview"]
