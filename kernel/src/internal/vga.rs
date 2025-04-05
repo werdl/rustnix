@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
 use x86_64::instructions::interrupts;
+use alloc::format;
 
 use crate::serial_print;
 
@@ -280,6 +281,7 @@ pub fn info(s: &str) {
         not(any(feature = "error_log", feature = "warn_log"))
     ))]
     {
+        kprint!("[{:.6}] ", crate::internal::clk::get_time_since_boot());
         kprint!("[ ");
         write_str("INFO", Color::LightBlue, Color::Black);
         kprint!(" ] {}\n", s);

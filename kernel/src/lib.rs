@@ -91,6 +91,8 @@ impl log::Log for SerialLogger {
             // Here you would send the message to a serial port or some output
             // For example, `serial_write(message.as_bytes())`
 
+            // print time since boot
+            kprint!("[{:.6}]", clk::get_time_since_boot());
             kprint!("[ ");
 
             match level {

@@ -49,12 +49,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-index-
 
-    - name: Build
-      run: |
-        cd kernel
-        cargo +nightly build --verbose
 
     - name: Run tests
       run: |
-        cd kernel
-        cargo +nightly test --verbose
+        make test
