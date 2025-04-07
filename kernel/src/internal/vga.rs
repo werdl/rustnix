@@ -7,7 +7,6 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
 use x86_64::instructions::interrupts;
-use alloc::format;
 
 use crate::serial_print;
 

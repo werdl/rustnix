@@ -1,8 +1,8 @@
 use alloc::{string::{String, ToString}, vec::Vec, vec};
 use conquer_once::spin::OnceCell;
-use lazy_static::lazy_static;
+use log::warn;
 
-use crate::{kprintln, syscall, GETERRNO};
+use crate::{syscall, GETERRNO, OPEN};
 
 use super::file::FileFlags;
 
@@ -12,16 +12,30 @@ pub static USERS: OnceCell<Vec<User>> = OnceCell::uninit();
 /// initialize the list of users
 pub fn init() {
     let mut buf = vec![0; 2048];
-    let etc_users = syscall::service::open("/etc/users", FileFlags::Read as u8);
 
-    if etc_users < 0 {
-        // panic!("failed to open /etc/users {}", syscall!(GETERRNO));
+    let path = "/etc/users";
+    let path_ptr = path.as_ptr() as usize;
+    let path_len = path.len();
+
+    let etc_users = syscall!(OPEN, path_ptr, path_len, FileFlags::Read as u8);
+
+    let errno = syscall!(GETERRNO);
+    if errno != 0 {
+        warn!("failed to open /etc/users {}", errno);
+        return;
     }
 
-    let res = syscall::service::read(etc_users as usize, &mut buf);
+    syscall!(
+        syscall::READ,
+        etc_users,
+        buf.as_mut_ptr() as usize,
+        buf.len()
+    );
 
-    if res < 0 {
-        // panic!("failed to read /etc/users {}", syscall!(GETERRNO));
+    let errno = syscall!(GETERRNO);
+    if errno != 0 {
+        warn!("failed to read /etc/users {}", errno);
+        return;
     }
 
     let data = String::from_utf8(buf)

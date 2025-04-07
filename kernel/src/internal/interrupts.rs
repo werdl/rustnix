@@ -1,13 +1,11 @@
 use crate::internal::gdt;
 use crate::internal::memory::physical_memory_offset;
-use crate::internal::process::ExitCode;
 use crate::internal::{interrupts, syscall};
 use crate::{kprint, kprintln};
 use lazy_static::lazy_static;
-use log::{error, trace, warn};
+use log::{error, warn};
 use x86_64::registers::control::Cr2;
 use x86_64::structures::paging::OffsetPageTable;
-use x86_64::VirtAddr;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
@@ -121,29 +119,26 @@ extern "x86-interrupt" fn page_fault_handler(
 
     if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
         if crate::internal::memory::alloc_pages(&mut mapper, addr, 1).is_err() {
-            error!(
-                "Error: Could not allocate page at {:#X}\n",
-                addr
-            );
             if error_code.contains(PageFaultErrorCode::USER_MODE) {
-                kprintln!(
-                    "Error: Page fault at {:#X} with error code {:#X}\n",
+                warn!(
+                    "User Mode Error (exiting): Page fault at {:#X} with error code {:#X}\n",
                     addr,
                     error_code.bits()
                 );
                 crate::internal::process::exit();
             } else {
+                error!(
+                    "Error: Could not allocate page at {:#X}\n",
+                    addr
+                );
                 hlt_loop();
             }
         }
     } else if error_code.contains(PageFaultErrorCode::USER_MODE) {
-        // TODO: This should be removed when the process page table is no
-        // longer a simple clone of the kernel page table. Currently a process
-        // is executed from its kernel address that is shared with the process.
         let start = (addr / 4096) * 4096;
         if crate::internal::memory::alloc_pages(&mut mapper, start, 4096).is_ok() {
             if crate::internal::process::is_userspace(start) {
-                let code_addr = crate::internal::process::code_addr();
+                let code_addr = crate::internal::process::get_code_addr();
                 let src = (code_addr + start) as *mut u8;
                 let dst = start as *mut u8;
                 unsafe {

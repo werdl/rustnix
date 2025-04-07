@@ -9,8 +9,11 @@ use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
 
 const STACK_SIZE: usize = 1024 * 8 * 16;
+/// Double fault interrupt stack table index
 pub const DOUBLE_FAULT_IST: u16 = 0;
+/// Page fault interrupt stack table index
 pub const PAGE_FAULT_IST: u16 = 1;
+/// General protection fault interrupt stack table index
 pub const GENERAL_PROTECTION_FAULT_IST: u16 = 2;
 
 lazy_static! {
@@ -37,6 +40,7 @@ lazy_static! {
 }
 
 lazy_static! {
+    /// Global Descriptor Table
     pub static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
 
@@ -59,14 +63,18 @@ lazy_static! {
     };
 }
 
+/// Segment selectors for the GDT
 pub struct Selectors {
     tss: SegmentSelector,
     code: SegmentSelector,
     data: SegmentSelector,
+    /// User code segment
     pub user_code: SegmentSelector,
+    /// User data segment
     pub user_data: SegmentSelector,
 }
 
+/// Initialize the GDT and load it into the CPU
 pub fn init() {
     GDT.0.load();
     unsafe {

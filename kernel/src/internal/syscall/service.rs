@@ -1,6 +1,6 @@
-use alloc::{vec, vec::Vec};
+use alloc::vec;
 
-use crate::internal::{file::FileFlags, fs::get_buffer_size};
+use crate::internal::{file::FileFlags, fs::get_buffer_size, process::ExitCode};
 
 use super::*;
 
@@ -264,7 +264,7 @@ pub fn time() -> u64 {
 }
 
 /// spawn a new process (SPAWN)
-pub fn spawn(path: &str, args: &[&str]) -> isize {
+pub fn spawn(path: &str, args_ptr: usize, args_len: usize) -> isize {
     let path = crate::internal::file::canonicalise(path);
 
     // use open syscall to open the file
@@ -292,15 +292,16 @@ pub fn spawn(path: &str, args: &[&str]) -> isize {
     let bytes_read = bytes_read as usize;
     let buf = &buf[..bytes_read];
     close(fd as usize);
-    // parse the buffer into a process
-
-    let args_ptr = args.as_ptr() as usize;
-
-    let args_len = args.len();
 
     if let Err(code) = crate::internal::process::Process::spawn(&buf, args_ptr, args_len) {
         code as isize
     } else {
         unreachable!(); // The kernel switched to the child process
     }
+}
+
+/// exit the current process (EXIT)
+pub fn exit(code: ExitCode) -> ExitCode {
+    crate::internal::process::exit();
+    code // this will be handled by the parent process, so we should return the value
 }

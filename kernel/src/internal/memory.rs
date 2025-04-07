@@ -20,8 +20,8 @@ pub fn physical_memory_offset() -> VirtAddr {
     )
 }
 
-/// The active level 4 page table
-pub unsafe fn active_level_4_table() -> &'static mut PageTable {
+/// The active level 4 page table (for internal use only)
+unsafe fn active_level_4_table() -> &'static mut PageTable {
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
 
     let phys = level_4_table_frame.start_address();
@@ -31,6 +31,7 @@ pub unsafe fn active_level_4_table() -> &'static mut PageTable {
     unsafe { &mut *page_table_ptr }
 }
 
+/// The active page table
 pub unsafe fn active_page_table() -> &'static mut PageTable {
     let phys = x86_64::registers::control::Cr3::read().0.start_address();
     let virt = VirtAddr::new(phys.as_u64());
@@ -154,6 +155,7 @@ pub fn init(boot_info: &'static bootloader::bootinfo::BootInfo) {
         .expect("heap initialization failed");
 }
 
+/// Create a new page table at the given physical frame
 pub fn create_page_table(frame: PhysFrame) -> &'static mut PageTable {
     let phys_addr = frame.start_address();
     let virt_addr = reverse_translate(phys_addr);
@@ -161,10 +163,12 @@ pub fn create_page_table(frame: PhysFrame) -> &'static mut PageTable {
     unsafe { &mut *page_table_ptr }
 }
 
+/// Get the frame allocator
 pub fn frame_allocator() -> BootInfoFrameAllocator {
     unsafe { BootInfoFrameAllocator::init(MEMORY_MAP.get_unchecked()) }
 }
 
+/// Allocate a range of pages
 pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: u64, size: usize) -> Result<(), ()> {
     let size = size.saturating_sub(1) as u64;
     let mut frame_allocator = frame_allocator();
@@ -200,6 +204,7 @@ pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: u64, size: usize) -> Resu
     Ok(())
 }
 
+/// Free a range of pages
 pub fn free_pages(mapper: &mut OffsetPageTable, addr: u64, size: usize) {
     let size = size.saturating_sub(1) as u64;
 

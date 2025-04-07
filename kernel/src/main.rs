@@ -8,19 +8,16 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
-use alloc::vec;
 use bootloader::{BootInfo, entry_point};
-use rustnix::{exit_qemu, internal::file::FileFlags, syscall, GETERRNO, OPEN, WRITE};
-use log::error;
+use rustnix::{syscall, EXEC};
 
 #[allow(unused_imports)]
 use rustnix::kprintln;
-use rustnix::internal::syscall;
 
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    error!("{}", info);
+    kprintln!("{}", info);
     rustnix::hlt_loop()
 }
 
@@ -46,11 +43,15 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
 
     // syscall!(WRITE, 1, buf.as_ptr() as usize, 26); // write to /dev/stdout
 
-    syscall::service::spawn("/bin/hello.bin", &[]);
+    let args: &[&str] = &[];
+    let args_ptr = args.as_ptr() as usize;
+    let args_len = args.len();
 
-    kprintln!("hello??");
+    let path = "/bin/hello.bin";
+    let path_ptr = path.as_ptr() as usize;
+    let path_len = path.len();
 
-    syscall::service::spawn("/bin/hello.bin", &[]);
+    syscall!(EXEC, path_ptr, path_len, args_ptr, args_len);
 
     loop {}
 

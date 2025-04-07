@@ -15,14 +15,15 @@
 - [x] Clock module
 - [x] Basic async/await support
 - [x] Syscalls
-- [ ] Processes
-- [ ] ELF Binaries
+- [x] Processes
+- [x] ELF Binaries
 - [ ] Basic Userspace
+- [ ] Basic IPC
 
 ## Thanks
 ### Code
 - for the initial stages of this project, I followed [https://os.phil-opp.com/](https://os.phil-opp.com/)
-- the ATA driver code was taken mainly from [https://github.com/vinc/moros](https://github.com/vinc/moros)
+- the ATA driver and process creation code was taken mainly from [https://github.com/vinc/moros](https://github.com/vinc/moros)
 - I have read some of the code of [moros](https://github.com/vinc/moros) and [RedoxOS](https://www.redox-os.org/) for inspiration and implementation details
 - the [OSDev Wiki](https://wiki.osdev.org) has also been helpful
 ### Libraries used

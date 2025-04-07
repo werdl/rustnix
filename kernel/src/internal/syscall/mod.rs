@@ -7,12 +7,12 @@ use spin::Mutex;
 use crate::{internal::{
     file::Stream,
     fs::FileHandle,
-    io::{Device, File, FILES},
+    io::{Device, File, FILES}, process::ExitCode,
 }, kprintln};
 
 use super::{
     file::{self, IOEvent},
-    io, process,
+    io,
 };
 
 /// Error number of the last error
@@ -142,16 +142,49 @@ pub const TIME: usize = 0x18;
 /// seek to a position in a file descriptor - `seek(fd, pos)`
 pub const SEEK: usize = 0x19;
 
-pub mod service;
+fn syscall_name(n: usize) -> &'static str {
+    match n {
+        READ => "read",
+        WRITE => "write",
+        OPEN => "open",
+        CLOSE => "close",
+        FLUSH => "flush",
+        EXIT => "exit",
+        SLEEP => "sleep",
+        WAIT => "wait",
+        GETPID => "getpid",
+        EXEC => "exec",
+        FORK => "fork",
+        GETTID => "gettid",
+        STOP => "stop",
+        WAITPID => "waitpid",
+        CONNECT => "connect",
+        ACCEPT => "accept",
+        LISTEN => "listen",
+        ALLOC => "alloc",
+        FREE => "free",
+        KIND => "kind",
+        GETERRNO => "get_errno",
+        POLL => "poll",
+        BOOTTIME => "boot_time",
+        TIME => "unix_time",
+        SEEK => "seek",
+        _ => "<unknown>",
+    }
+}
+
+/// internal syscall module
+mod service;
 pub use service::init;
 
 /// Dispatch a syscall, given the syscall number and arguments
-pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -> isize {
-    kprintln!("dispatch syscall: {} {} {} {}", n, arg1, arg2, arg3);
+pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize) -> isize {
+    trace!("syscall: {}: {} {} {}, {}", syscall_name(n), arg1, arg2, arg3, arg4);
     match n {
         READ => {
             let fd = arg1;
-            let buf = unsafe { core::slice::from_raw_parts_mut(arg2 as *mut u8, arg3) };
+            let actual_addr = crate::internal::process::ptr_from_addr(arg2 as u64);
+            let buf = unsafe { core::slice::from_raw_parts_mut(actual_addr, arg3) };
 
             service::read(fd, buf)
         }
@@ -165,7 +198,8 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             service::write(fd, buf)
         }
         OPEN => {
-            let path = utf8_from_raw_parts(arg1 as *mut u8, arg2);
+            let path_addr = crate::internal::process::ptr_from_addr(arg1 as u64);
+            let path = utf8_from_raw_parts(path_addr, arg2);
             let flags = arg3;
 
             service::open(path, flags as u8)
@@ -181,9 +215,7 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             service::flush(fd)
         }
         EXIT => {
-            process::exit();
-            kprintln!("welcome back");
-            0
+            service::exit(ExitCode::from(arg1 as u8)) as isize
         }
         SLEEP => {
             let ns = arg1;
@@ -199,7 +231,10 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             unimplemented!("GETPID")
         }
         EXEC => {
-            unimplemented!("EXEC")
+            let path_addr = crate::internal::process::ptr_from_addr(arg1 as u64);
+            let path = utf8_from_raw_parts(path_addr, arg2);
+
+            service::spawn(path, arg3, arg4)
         }
         FORK => {
             unimplemented!("FORK")

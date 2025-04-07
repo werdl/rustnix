@@ -27,12 +27,15 @@ use core::{default, fmt::Display};
 use lazy_static::lazy_static;
 use spin::Mutex;
 
-use crate::{
-    internal::{ata::{read, write, BLOCK_SIZE}, clk, file::{FileError, FileFlags, FileSystem, Stream, ALL_FLAGS}, syscall::service::close},
-    kprintln, serial_print,
+#[allow(unused_imports)] // ALL_FLAGS is used
+use crate::internal::{
+    ata::{BLOCK_SIZE, read, write},
+    clk,
+    file::{ALL_FLAGS, FileError, FileFlags, FileSystem, Stream},
 };
 
-use log::trace;
+#[allow(unused_imports)] // warn is used
+use log::{trace, warn};
 
 use alloc::{
     boxed::Box,
@@ -63,6 +66,7 @@ struct Superblock {
     num_data_blocks: u64,
 }
 
+/// an inode
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Inode {
@@ -98,6 +102,7 @@ pub struct FileMetadata {
 #[derive(Debug, Clone)]
 pub struct PhysFs {
     superblock: Superblock,
+    /// the inode table
     pub inode_table: Vec<Inode>,
     /// the data blocks
     pub data_blocks: Vec<DataBlock>,
@@ -165,30 +170,26 @@ pub enum FsError {
 
 impl Display for FsError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                FsError::InvalidPath => "Invalid path".to_string(),
-                FsError::FileNotFound => FsError::FileNotFound.to_string(),
-                FsError::FileExists => "File already exists".to_string(),
-                FsError::DiskFull => "Disk is full".to_string(),
-                FsError::OutOfInodes => "Out of inodes".to_string(),
-                FsError::OutOfDataBlocks => "Out of data blocks".to_string(),
-                FsError::InvalidInode => "Invalid inode".to_string(),
-                FsError::InvalidDataBlock => "Invalid data block".to_string(),
-                FsError::InvalidSuperblock => "Invalid superblock".to_string(),
-                FsError::InvalidInodeTable => "Invalid inode table".to_string(),
-                FsError::InvalidMetadata => "Invalid metadata".to_string(),
-                FsError::WriteError => "Write error".to_string(),
-                FsError::ReadError => "Read error".to_string(),
-                FsError::UnwritableFile => "File is unwritable".to_string(),
-                FsError::UnreadableFile => "File is unreadable".to_string(),
-                FsError::FilesystemNotFound => "Filesystem not found".to_string(),
-                FsError::FilesystemExists => "Filesystem already exists".to_string(),
-                FsError::InvalidFileDescriptor => "Invalid file descriptor".to_string(),
-            }
-        )
+        write!(f, "{}", match self {
+            FsError::InvalidPath => "Invalid path".to_string(),
+            FsError::FileNotFound => FsError::FileNotFound.to_string(),
+            FsError::FileExists => "File already exists".to_string(),
+            FsError::DiskFull => "Disk is full".to_string(),
+            FsError::OutOfInodes => "Out of inodes".to_string(),
+            FsError::OutOfDataBlocks => "Out of data blocks".to_string(),
+            FsError::InvalidInode => "Invalid inode".to_string(),
+            FsError::InvalidDataBlock => "Invalid data block".to_string(),
+            FsError::InvalidSuperblock => "Invalid superblock".to_string(),
+            FsError::InvalidInodeTable => "Invalid inode table".to_string(),
+            FsError::InvalidMetadata => "Invalid metadata".to_string(),
+            FsError::WriteError => "Write error".to_string(),
+            FsError::ReadError => "Read error".to_string(),
+            FsError::UnwritableFile => "File is unwritable".to_string(),
+            FsError::UnreadableFile => "File is unreadable".to_string(),
+            FsError::FilesystemNotFound => "Filesystem not found".to_string(),
+            FsError::FilesystemExists => "Filesystem already exists".to_string(),
+            FsError::InvalidFileDescriptor => "Invalid file descriptor".to_string(),
+        })
     }
 }
 
@@ -645,7 +646,9 @@ impl PhysFs {
 
     fn find_empty_data_block(&self, ignore: Option<Vec<u64>>) -> Result<u64, FsError> {
         for i in 1..self.superblock.num_data_blocks {
-            if self.data_blocks[i as usize].data == [0; 512] && !ignore.as_ref().map_or(false, |v| v.contains(&i)) {
+            if self.data_blocks[i as usize].data == [0; 512]
+                && !ignore.as_ref().map_or(false, |v| v.contains(&i))
+            {
                 // possibility that it is used, and just happens to be empty
                 // check if it is actually used
                 let mut used = false;
@@ -1024,15 +1027,12 @@ impl VirtFs {
         let phys_fs = PhysFs::read_from_disk(bus, dsk)?;
 
         let mut file_systems = FILESYSTEMS.lock();
-        file_systems.insert(
-            (bus, dsk),
-            VirtFs {
-                phys_fs,
-                bus,
-                dsk,
-                open_files: Vec::new(),
-            },
-        );
+        file_systems.insert((bus, dsk), VirtFs {
+            phys_fs,
+            bus,
+            dsk,
+            open_files: Vec::new(),
+        });
 
         Ok(())
     }
@@ -1040,36 +1040,33 @@ impl VirtFs {
     /// create a new filesystem with a given size, on a given bus and device (note that this call will NOT format the disk, instead the first flush call will)
     pub fn new(bus: usize, dsk: usize, disk_size: u64) {
         let mut file_systems = FILESYSTEMS.lock();
-        file_systems.insert(
-            (bus, dsk),
-            VirtFs {
-                phys_fs: PhysFs {
-                    superblock: Superblock {
-                        magic_number: MAGIC_NUMBER,
-                        disk_size,
-                        inode_table_size: 1024,
-                        data_block_size: 512,
-                        num_inodes: 1024,
-                        num_data_blocks: (disk_size / 512) - 1024 - 1, // superblock + inode table
-                    },
-                    inode_table: vec![
-                        Inode {
-                            num_data_blocks: 0,
-                            data_block_pointers: [0; 12],
-                            single_indirect_block_pointer: 0,
-                            double_indirect_block_pointer: 0,
-                            triple_indirect_block_pointer: 0,
-                            file_name: [0; 384],
-                        };
-                        1024
-                    ],
-                    data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        file_systems.insert((bus, dsk), VirtFs {
+            phys_fs: PhysFs {
+                superblock: Superblock {
+                    magic_number: MAGIC_NUMBER,
+                    disk_size,
+                    inode_table_size: 1024,
+                    data_block_size: 512,
+                    num_inodes: 1024,
+                    num_data_blocks: (disk_size / 512) - 1024 - 1, // superblock + inode table
                 },
-                bus: bus,
-                dsk,
-                open_files: Vec::new(),
+                inode_table: vec![
+                    Inode {
+                        num_data_blocks: 0,
+                        data_block_pointers: [0; 12],
+                        single_indirect_block_pointer: 0,
+                        double_indirect_block_pointer: 0,
+                        triple_indirect_block_pointer: 0,
+                        file_name: [0; 384],
+                    };
+                    1024
+                ],
+                data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
             },
-        );
+            bus: bus,
+            dsk,
+            open_files: Vec::new(),
+        });
     }
 }
 
@@ -1489,6 +1486,7 @@ pub fn get_first_good_fs() -> Result<(usize, usize), FileError> {
     }
 }
 
+/// load the filesystem from the disk
 pub fn load_fs(bus: usize, dsk: usize) -> Result<(), FileError> {
     VirtFs::from_disk(bus, dsk).map_err(|f| f.into())
 }
@@ -1501,36 +1499,33 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
     }
 
     if size_of_new.is_some() {
-        file_systems.insert(
-            (bus, dsk),
-            VirtFs {
-                phys_fs: PhysFs {
-                    superblock: Superblock {
-                        magic_number: MAGIC_NUMBER,
-                        disk_size: size_of_new.unwrap() as u64,
-                        inode_table_size: 1024,
-                        data_block_size: 512,
-                        num_inodes: 1024,
-                        num_data_blocks: (size_of_new.unwrap() as u64 / 512) - 1024 - 1, // superblock + inode table
-                    },
-                    inode_table: vec![
-                        Inode {
-                            num_data_blocks: 0,
-                            data_block_pointers: [0; 12],
-                            single_indirect_block_pointer: 0,
-                            double_indirect_block_pointer: 0,
-                            triple_indirect_block_pointer: 0,
-                            file_name: [0; 384],
-                        };
-                        1024
-                    ],
-                    data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
+        file_systems.insert((bus, dsk), VirtFs {
+            phys_fs: PhysFs {
+                superblock: Superblock {
+                    magic_number: MAGIC_NUMBER,
+                    disk_size: size_of_new.unwrap() as u64,
+                    inode_table_size: 1024,
+                    data_block_size: 512,
+                    num_inodes: 1024,
+                    num_data_blocks: (size_of_new.unwrap() as u64 / 512) - 1024 - 1, // superblock + inode table
                 },
-                bus,
-                dsk,
-                open_files: Vec::new(),
+                inode_table: vec![
+                    Inode {
+                        num_data_blocks: 0,
+                        data_block_pointers: [0; 12],
+                        single_indirect_block_pointer: 0,
+                        double_indirect_block_pointer: 0,
+                        triple_indirect_block_pointer: 0,
+                        file_name: [0; 384],
+                    };
+                    1024
+                ],
+                data_blocks: vec![DataBlock { data: [0; 512] }; 1024],
             },
-        );
+            bus,
+            dsk,
+            open_files: Vec::new(),
+        });
         Ok(())
     } else {
         Err(FileError::NotFoundError(FsError::FilesystemNotFound.into()))
@@ -1541,8 +1536,15 @@ pub fn add_fs(bus: usize, dsk: usize, size_of_new: Option<u32>) -> Result<(), Fi
 pub fn init() {
     trace!("Initializing filesystems");
 
-    #[cfg(not(test))] // during tests, we don't want to load the filesystem, as we don't currently attach a disk
-    load_fs(0, 1);
+    #[cfg(not(test))]
+    // during tests, we don't want to load the filesystem, as we don't currently attach a disk
+    {
+        let res: Result<(), FileError> = load_fs(0, 1);
+
+        if let Err(err) = res {
+            warn!("Failed to load filesystem: {:?}", err);
+        }
+    }
 }
 
 /// test the creation of a file
@@ -1576,13 +1578,13 @@ fn test_create_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0,0), fs.clone());
-
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
     fs.open("test.txt", ALL_FLAGS).unwrap();
     assert!(fs.exists("test.txt"));
 }
 
+/// test the writing of a file
 #[test_case]
 fn test_write_file() {
     let mut fs = VirtFs {
@@ -1613,22 +1615,26 @@ fn test_write_file() {
         open_files: Vec::new(),
     };
 
-
     fs.phys_fs.create_file("test.txt", [0, 0, 0], 0).unwrap();
 
     FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
     let data = b"Hello, world!";
-    fs.open("test.txt", FileFlags::Write as u8).expect("Failed to open file").write(data).expect("Failed to write to file");
+    fs.open("test.txt", FileFlags::Write as u8)
+        .expect("Failed to open file")
+        .write(data)
+        .expect("Failed to write to file");
 
     let mut buf = [0; 512];
-    fs.open("test.txt", FileFlags::Read as u8).expect("Failed to open file").read(&mut buf).expect("Failed to read from file");
+    fs.open("test.txt", FileFlags::Read as u8)
+        .expect("Failed to open file")
+        .read(&mut buf)
+        .expect("Failed to read from file");
 
     assert_eq!(&buf[..data.len()], data);
 
     FILESYSTEMS.lock().remove(&(0, 0));
 }
-
 
 /// test chmod
 #[test_case]
@@ -1661,7 +1667,7 @@ fn test_chmod_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0,0), fs.clone());
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
     fs.open("test.txt", ALL_FLAGS).unwrap();
 
@@ -1701,8 +1707,7 @@ fn test_chown_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0,0), fs.clone());
-
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
     fs.open("test.txt", ALL_FLAGS).unwrap();
 
@@ -1744,8 +1749,7 @@ fn test_delete_file() {
         open_files: Vec::new(),
     };
 
-    FILESYSTEMS.lock().insert((0,0), fs.clone());
-
+    FILESYSTEMS.lock().insert((0, 0), fs.clone());
 
     fs.open("test.txt", ALL_FLAGS).unwrap();
 

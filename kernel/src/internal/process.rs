@@ -8,23 +8,17 @@ use core::arch::asm;
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use lazy_static::lazy_static;
 use linked_list_allocator::LockedHeap;
-use log::debug;
+use log::{debug, warn};
 use object::{Object, ObjectSegment};
 use spin::RwLock;
 use x86_64::VirtAddr;
 use x86_64::registers::control::Cr3;
 use x86_64::structures::idt::InterruptStackFrameValue;
 use x86_64::structures::paging::{
-    FrameAllocator,
-    OffsetPageTable,
-    PageTable,
-    PageTableFlags, // Page, Size4KiB,
-    PhysFrame,
-    Translate,
+    FrameAllocator, OffsetPageTable, PageTable, PageTableFlags, PhysFrame, Translate,
     mapper::TranslateResult,
 };
 
-use crate::internal::syscall;
 use crate::kprintln;
 
 use super::console::Console;
@@ -45,21 +39,25 @@ const MAX_PROC_SIZE: usize = 10 << 20; // 10 MB
 static USER_ADDR: u64 = 0x800000;
 
 static CODE_ADDR: AtomicU64 = AtomicU64::new(0);
+/// The current process ID
 pub static PID: AtomicUsize = AtomicUsize::new(0);
+/// The maximum process ID
 pub static MAX_PID: AtomicUsize = AtomicUsize::new(1);
 
 lazy_static! {
-    pub static ref PROCESS_TABLE: RwLock<[Box<Process>; MAX_PROCS]> =
-        { RwLock::new([(); MAX_PROCS].map(|_| Box::new(Process::new()))) };
+    /// The process table
+    pub static ref PROCESS_TABLE: RwLock<[Box<Process>; MAX_PROCS]> = RwLock::new([(); MAX_PROCS].map(|_| Box::new(Process::new())));
 }
 
-// Called during kernel heap initialization
+/// Called during kernel heap initialization
 pub fn init_process_addr(addr: u64) {
     CODE_ADDR.store(addr, Ordering::SeqCst);
 }
 
+/// represents the registers saved by the kernel
 #[repr(align(8), C)]
 #[derive(Debug, Clone, Copy, Default)]
+#[allow(missing_docs)] // not needed
 pub struct Registers {
     // Saved scratch registers
     pub r11: usize,
@@ -73,21 +71,38 @@ pub struct Registers {
     pub rax: usize,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
-#[derive(Clone, Debug)]
+#[allow(missing_docs)] // not needed
 pub enum ExitCode {
     Success = 0,
-    Error = 1,
-
-    ExecError = 2,
-
-    ReadError = 3,
-    OpenError = 4,
-    PageFaultError = 5,
-
+    Failure = 1,
+    UsageError = 64,
+    DataError = 65,
+    OpenError = 128,
+    ReadError = 129,
+    ExecError = 130,
+    PageFaultError = 200,
     ShellExit = 255,
 }
 
+impl From<u8> for ExitCode {
+    fn from(code: u8) -> Self {
+        match code {
+            0 => ExitCode::Success,
+            1 => ExitCode::Failure,
+            64 => ExitCode::UsageError,
+            65 => ExitCode::DataError,
+            128 => ExitCode::OpenError,
+            129 => ExitCode::ReadError,
+            130 => ExitCode::ExecError,
+            200 => ExitCode::PageFaultError,
+            _ => ExitCode::ShellExit,
+        }
+    }
+}
+
+/// Process data
 #[derive(Clone, Debug)]
 pub struct ProcessData {
     env: BTreeMap<String, String>,
@@ -97,6 +112,7 @@ pub struct ProcessData {
 }
 
 impl ProcessData {
+    /// Create a new process data
     pub fn new(dir: &str, user: Option<&str>) -> Self {
         let env = BTreeMap::new();
         let dir = dir.to_string();
@@ -121,59 +137,69 @@ impl ProcessData {
     }
 }
 
-pub fn id() -> usize {
+/// Get the current process ID
+pub fn pid() -> usize {
     PID.load(Ordering::SeqCst)
 }
 
-pub fn set_id(id: usize) {
+/// Set the current process ID
+pub fn set_pid(id: usize) {
     PID.store(id, Ordering::SeqCst)
 }
 
-pub fn env(key: &str) -> Option<String> {
+/// Get an environment variable
+pub fn get_env(key: &str) -> Option<String> {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.env.get(key).cloned()
 }
 
-pub fn envs() -> BTreeMap<String, String> {
+/// Get all currently set environment variables
+pub fn get_envs() -> BTreeMap<String, String> {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.env.clone()
 }
 
-pub fn dir() -> String {
+/// Get the current working directory
+pub fn get_dir() -> String {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.dir.clone()
 }
 
-pub fn user() -> Option<String> {
+/// Get the user running the process
+pub fn get_user() -> Option<String> {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.user.clone()
 }
 
+/// set an environment variable
 pub fn set_env(key: &str, val: &str) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.data.env.insert(key.into(), val.into());
 }
 
+/// set the current working directory
 pub fn set_dir(dir: &str) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.data.dir = dir.into();
 }
 
+/// set the user running the process
 pub fn set_user(user: &str) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.data.user = Some(user.into())
 }
 
+/// create a new handle for this process
 pub fn create_handle(file: File) -> Result<usize, ()> {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     let min = 4; // The first 4 handles are reserved
     let max = MAX_HANDLES;
     for handle in min..max {
@@ -186,44 +212,51 @@ pub fn create_handle(file: File) -> Result<usize, ()> {
     Err(())
 }
 
+/// update a handle for this process
 pub fn update_handle(handle: usize, file: File) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.data.handles[handle] = Some(Box::new(file));
 }
 
+/// delete a handle for this process
 pub fn delete_handle(handle: usize) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.data.handles[handle] = None;
 }
 
-pub fn handle(handle: usize) -> Option<Box<File>> {
+/// get a handle for this process
+pub fn get_handle(handle: usize) -> Option<Box<File>> {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.handles[handle].clone()
 }
 
+/// list all handles
 pub fn handles() -> Vec<Option<Box<File>>> {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.data.handles.to_vec()
 }
 
-pub fn code_addr() -> u64 {
+/// get the code address of the current process
+pub fn get_code_addr() -> u64 {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.code_addr
 }
 
+/// get the stack address of the current process
 pub fn set_code_addr(addr: u64) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.code_addr = addr;
 }
 
+/// convert an user address to a pointer
 pub fn ptr_from_addr(addr: u64) -> *mut u8 {
-    let base = code_addr();
+    let base = get_code_addr();
     if addr < base {
         (base + addr) as *mut u8
     } else {
@@ -231,41 +264,46 @@ pub fn ptr_from_addr(addr: u64) -> *mut u8 {
     }
 }
 
-pub fn registers() -> Registers {
+/// get the registers of the current process
+pub fn get_registers() -> Registers {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.registers
 }
 
+/// set the registers of the current process
 pub fn set_registers(regs: Registers) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.registers = regs
 }
 
-pub fn stack_frame() -> InterruptStackFrameValue {
+/// get the stack frame of the current process
+pub fn get_stack_frame() -> InterruptStackFrameValue {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.stack_frame.unwrap()
 }
 
+/// set the stack frame of the current process
 pub fn set_stack_frame(stack_frame: InterruptStackFrameValue) {
     let mut table = PROCESS_TABLE.write();
-    let proc = &mut table[id()];
+    let proc = &mut table[pid()];
     proc.stack_frame = Some(stack_frame);
 }
 
-// TODO: Remove this when the kernel is no longer at 0x200000 in userspace
+/// determine whether the given address is in userspace
 pub fn is_userspace(addr: u64) -> bool {
     USER_ADDR <= addr && addr <= USER_ADDR + MAX_PROC_SIZE as u64
 }
 
+/// wrap up and exit the current process, surrendering control to the parent
 pub fn exit() {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
 
     MAX_PID.fetch_sub(1, Ordering::SeqCst);
-    set_id(proc.parent_id);
+    set_pid(proc.parent_id);
 
     unsafe {
         let (_, flags) = Cr3::read();
@@ -277,34 +315,41 @@ pub fn exit() {
 
 unsafe fn page_table_frame() -> PhysFrame {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     proc.page_table_frame
 }
 
+/// get the page table of the current process
 pub unsafe fn page_table() -> &'static mut PageTable {
-    crate::internal::memory::create_page_table(page_table_frame())
+    unsafe { crate::internal::memory::create_page_table(page_table_frame()) }
 }
 
+/// allocate memory for the current process
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
-    proc.allocator.alloc(layout)
+    let proc = &table[pid()];
+    unsafe { proc.allocator.alloc(layout) }
 }
 
+/// deallocate memory for the current process
 pub unsafe fn free(ptr: *mut u8, layout: Layout) {
     let table = PROCESS_TABLE.read();
-    let proc = &table[id()];
+    let proc = &table[pid()];
     let bottom = proc.allocator.lock().bottom();
     let top = proc.allocator.lock().top();
     if bottom <= ptr && ptr < top {
-        proc.allocator.dealloc(ptr, layout);
-    } else { // FIXME: Uncomment to see errors
-        //let size = layout.size();
-        //let plural = if size != 1 { "s" } else { "" };
-        //debug!("Could not free {} byte{} at {:#?}", size, plural, ptr);
+        unsafe {
+            proc.allocator.dealloc(ptr, layout);
+        }
+    } else {
+        warn!(
+            "free: pointer {:#X} is not in the heap ({:#X}..{:#X})",
+            ptr as usize, bottom as usize, top as usize
+        );
     }
 }
 
+/// Process structure
 #[derive(Clone)]
 pub struct Process {
     id: usize,
@@ -320,6 +365,7 @@ pub struct Process {
 }
 
 impl Process {
+    /// Create a new process
     pub fn new() -> Self {
         Self {
             id: 0,
@@ -335,6 +381,7 @@ impl Process {
         }
     }
 
+    /// Spawn a new process
     pub fn spawn(bin: &[u8], args_ptr: usize, args_len: usize) -> Result<(), ExitCode> {
         if let Ok(id) = Self::create(bin) {
             let proc = {
@@ -359,7 +406,7 @@ impl Process {
             .allocate_frame()
             .expect("frame allocation failed");
 
-        let page_table = unsafe { crate::internal::memory::create_page_table(page_table_frame) };
+        let page_table = crate::internal::memory::create_page_table(page_table_frame);
 
         let kernel_page_table = unsafe { crate::internal::memory::active_page_table() };
 
@@ -414,11 +461,9 @@ impl Process {
             return Err(());
         }
 
-        syscall::service::alloc(1024, 1);
-
         let parent = {
             let process_table = PROCESS_TABLE.read();
-            process_table[id()].clone()
+            process_table[pid()].clone()
         };
 
         let data = parent.data.clone();
@@ -453,37 +498,40 @@ impl Process {
         kprintln!("exec");
         let page_table = unsafe { page_table() };
         let mut mapper = unsafe {
-            OffsetPageTable::new(page_table, crate::internal::memory::physical_memory_offset())
+            OffsetPageTable::new(
+                page_table,
+                crate::internal::memory::physical_memory_offset(),
+            )
         };
 
-        // // Copy args to user memory
+        // Copy args to user memory
         let args_addr = self.code_addr + (self.stack_addr - self.code_addr) / 2;
-        // crate::internal::memory::alloc_pages(&mut mapper, args_addr, 1).
-        //     expect("proc args alloc");
-        // let args: &[&str] = unsafe {
-        //     let ptr = ptr_from_addr(args_ptr as u64) as usize;
-        //     core::slice::from_raw_parts(ptr as *const &str, args_len)
-        // };
-        // let mut addr = args_addr;
-        // let vec: Vec<&str> = args.iter().map(|arg| {
-        //     let ptr = addr as *mut u8;
-        //     addr += arg.len() as u64;
-        //     unsafe {
-        //         let s = core::slice::from_raw_parts_mut(ptr, arg.len());
-        //         s.copy_from_slice(arg.as_bytes());
-        //         core::str::from_utf8_unchecked(s)
-        //     }
-        // }).collect();
-        // let align = core::mem::align_of::<&str>() as u64;
-        // addr += align - (addr % align);
-        // let args = vec.as_slice();
-        // let ptr = addr as *mut &str;
-        // let args: &[&str] = unsafe {
-        //     let s = core::slice::from_raw_parts_mut(ptr, args.len());
-        //     s.copy_from_slice(args);
-        //     s
-        // };
-        // let args_ptr = args.as_ptr() as u64;
+        crate::internal::memory::alloc_pages(&mut mapper, args_addr, 1).
+            expect("proc args alloc");
+        let args: &[&str] = unsafe {
+            let ptr = ptr_from_addr(args_ptr as u64) as usize;
+            core::slice::from_raw_parts(ptr as *const &str, args_len)
+        };
+        let mut addr = args_addr;
+        let vec: Vec<&str> = args.iter().map(|arg| {
+            let ptr = addr as *mut u8;
+            addr += arg.len() as u64;
+            unsafe {
+                let s = core::slice::from_raw_parts_mut(ptr, arg.len());
+                s.copy_from_slice(arg.as_bytes());
+                core::str::from_utf8_unchecked(s)
+            }
+        }).collect();
+        let align = core::mem::align_of::<&str>() as u64;
+        addr += align - (addr % align);
+        let args = vec.as_slice();
+        let ptr = addr as *mut &str;
+        let args: &[&str] = unsafe {
+            let s = core::slice::from_raw_parts_mut(ptr, args.len());
+            s.copy_from_slice(args);
+            s
+        };
+        let args_ptr = args.as_ptr() as u64;
 
         let heap_addr = args_addr + 4096;
         let heap_size = ((self.stack_addr - heap_addr) / 2) as usize;
@@ -491,13 +539,17 @@ impl Process {
             self.allocator.lock().init(heap_addr as *mut u8, heap_size);
         }
 
-        kprintln!("heap: {:#X}..{:#X}", heap_addr, heap_addr + heap_size as u64);
+        kprintln!(
+            "heap: {:#X}..{:#X}",
+            heap_addr,
+            heap_addr + heap_size as u64
+        );
 
         //debug!("{:#X}..{:#X}: {} bytes for the args", args_addr, args_addr + 4096, 4096); // FIXME: args size
         //debug!("{:#X}..{:#X}: {} bytes for the heap", heap_addr, heap_addr + heap_size as u64, heap_size);
         //debug!("{:#X}..{:#X}: {} bytes for the stack", self.stack_addr - heap_size as u64, self.stack_addr, heap_size);
 
-        set_id(self.id); // Change PID
+        set_pid(self.id); // Change PID
 
         unsafe {
             let (_, flags) = Cr3::read();
@@ -523,7 +575,7 @@ impl Process {
 
     fn mapper(&self) -> OffsetPageTable {
         let page_table =
-            unsafe { crate::internal::memory::create_page_table(self.page_table_frame) };
+            crate::internal::memory::create_page_table(self.page_table_frame);
         unsafe {
             OffsetPageTable::new(
                 page_table,

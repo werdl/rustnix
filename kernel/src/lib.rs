@@ -11,6 +11,7 @@ extern crate alloc;
 
 /// internal modules, not exposed to userspace
 pub mod internal;
+#[allow(unused_imports)] // fs is used
 use internal::{acpi, ata, clk, fs, gdt, interrupts, keyboard, memory, syscall, user, vga};
 pub use {
     syscall::ALLOC, syscall::CLOSE, syscall::EXEC, syscall::EXIT, syscall::FLUSH, syscall::FREE,
@@ -70,7 +71,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     hlt_loop();
 }
 
-use alloc::format;
+use alloc::{format, string::String};
 use log::{Level, Metadata, Record, info};
 
 // Example: A custom logger that writes logs to a serial port.
@@ -88,49 +89,53 @@ impl log::Log for SerialLogger {
             let args = record.args();
             let message = format!("{}", args);
 
-            // Here you would send the message to a serial port or some output
-            // For example, `serial_write(message.as_bytes())`
-
-            // print time since boot
-            let module_path = record.module_path().unwrap_or("unknown");
-            let file = record.file().unwrap_or("unknown");
-            let line = record.line().unwrap_or(0);
-
-            #[cfg(feature = "trace_log")]
-            kprint!("[{}:{}:{} @ ", module_path, file, line);
-
-            #[cfg(not(feature = "trace_log"))]
-            kprint!("[");
-
-            kprint!("{:.6}] ", clk::get_time_since_boot());
-            kprint!("[ ");
+            let mut log_message = String::new();
+            log_message.push_str(&format!("[{:.6}] ", clk::get_time_since_boot()));
+            log_message.push_str("[ ");
 
             match level {
                 Level::Error => {
-                    vga::write_str("ERROR", Color::LightRed, Color::Black);
+                    log_message.push_str("ERROR");
                 }
                 Level::Warn => {
-                    vga::write_str("WARN", Color::Yellow, Color::Black);
+                    log_message.push_str("WARN");
                 }
                 Level::Info => {
-                    vga::write_str("INFO", Color::LightBlue, Color::Black);
+                    log_message.push_str("INFO");
                 }
                 Level::Debug => {
-                    vga::write_str("DEBUG", Color::LightGreen, Color::Black);
+                    log_message.push_str("DEBUG");
                 }
                 Level::Trace => {
-                    vga::write_str("TRACE", Color::LightCyan, Color::Black);
+                    log_message.push_str("TRACE");
                 }
             }
 
             match level {
                 Level::Warn | Level::Info => {
-                    kprint!(" ");
+                    log_message.push(' ');
                 }
                 _ => {}
             }
 
-            kprint!("] {}\n", message);
+            log_message.push_str(&format!("] {}", message));
+
+            #[cfg(feature = "trace_log")]
+            {
+                let module_path = record.module_path().unwrap_or("unknown");
+                let file = record.file().unwrap_or("unknown");
+                let line = record.line().unwrap_or(0);
+                log_message.push_str(&format!(" [{}:{}:{}]\n", module_path, file, line));
+            }
+
+            match level {
+                Level::Error => {
+                    panic!("{}", log_message);
+                }
+                _ => {
+                    kprint!("{}\n", log_message);
+                }
+            }
         }
     }
 
@@ -203,7 +208,6 @@ pub fn init(boot_info: &'static BootInfo) {
     gdt::init();
     vga::info("GDT initialized");
 
-
     interrupts::init_idt();
     vga::info("IDT initialized");
 
@@ -225,7 +229,6 @@ pub fn init(boot_info: &'static BootInfo) {
     keyboard::init();
     info!("Console initialized");
 
-
     ata::init();
     info!("ATA initialized");
 
@@ -239,7 +242,10 @@ pub fn init(boot_info: &'static BootInfo) {
     user::init();
     info!("Users initialized");
 
-    serial_print!("Kernel initialized in {} ms", clk::get_boot_time_ns() / 1_000_000);
+    serial_print!(
+        "Kernel initialized in {} ms",
+        clk::get_boot_time_ns() / 1_000_000
+    );
 
     #[cfg(feature = "ascii-art")]
     {
