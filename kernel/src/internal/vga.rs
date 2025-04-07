@@ -81,6 +81,9 @@ impl VgaWriter {
 
     /// Write a byte to the VGA buffer
     pub fn write_byte(&mut self, byte: u8) {
+        if byte.is_ascii() {
+            serial_print!("{}", byte as char);
+        }
         match byte {
             b'\n' => self.new_line(),
             0x08 => {
@@ -293,8 +296,9 @@ pub fn info(s: &str) {
 pub fn trace(s: &str) {
     #[cfg(feature = "trace_log")]
     {
+        kprint!("[{:.6}] ", crate::internal::clk::get_time_since_boot());
         kprint!("[ ");
         write_str("TRACE", Color::LightCyan, Color::Black);
-        kprint!(" ] {}\n", s);
+        kprint!("] {}\n", s);
     }
 }

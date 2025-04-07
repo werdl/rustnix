@@ -26,6 +26,7 @@ pub fn init_heap(
         let end_page = Page::containing_address(heap_end);
         Page::range_inclusive(start_page, end_page)
     };
+    super::process::init_process_addr((HEAP_START + HEAP_SIZE) as u64);
     for page in page_range {
         let frame = frame_allocator
             .allocate_frame()
@@ -33,6 +34,8 @@ pub fn init_heap(
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe { mapper.map_to(page, frame, flags, frame_allocator)?.flush() };
     }
+
+    // calculate
 
     unsafe {
         ALLOCATOR.lock().init(HEAP_START as *mut u8, HEAP_SIZE);

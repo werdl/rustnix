@@ -92,7 +92,17 @@ impl log::Log for SerialLogger {
             // For example, `serial_write(message.as_bytes())`
 
             // print time since boot
-            kprint!("[{:.6}]", clk::get_time_since_boot());
+            let module_path = record.module_path().unwrap_or("unknown");
+            let file = record.file().unwrap_or("unknown");
+            let line = record.line().unwrap_or(0);
+
+            #[cfg(feature = "trace_log")]
+            kprint!("[{}:{}:{} @ ", module_path, file, line);
+
+            #[cfg(not(feature = "trace_log"))]
+            kprint!("[");
+
+            kprint!("{:.6}] ", clk::get_time_since_boot());
             kprint!("[ ");
 
             match level {

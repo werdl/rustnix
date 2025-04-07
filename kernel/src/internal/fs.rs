@@ -780,7 +780,7 @@ impl PhysFs {
             data.extend_from_slice(data_block);
         }
 
-        trace!("data: {:?}", data[0..10].to_vec());
+        // trace!("data: {:?}", data[0..10].to_vec());
 
         Ok((data, metadata))
     }

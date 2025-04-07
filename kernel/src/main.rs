@@ -10,7 +10,8 @@ use core::panic::PanicInfo;
 
 use alloc::vec;
 use bootloader::{BootInfo, entry_point};
-use rustnix::{exit_qemu, internal::file::FileFlags, syscall, OPEN, WRITE};
+use rustnix::{exit_qemu, internal::file::FileFlags, syscall, GETERRNO, OPEN, WRITE};
+use log::error;
 
 #[allow(unused_imports)]
 use rustnix::kprintln;
@@ -19,7 +20,7 @@ use rustnix::internal::syscall;
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    kprintln!("{}", info);
+    error!("{}", info);
     rustnix::hlt_loop()
 }
 
@@ -38,12 +39,18 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     test_main();
 
 
-    let mut buf = vec![0; 512];
-    // insert string to write into buffer
-    let data = b"Hello from the other side!";
-    buf[..data.len()].copy_from_slice(data);
+    // let mut buf = vec![0; 512];
+    // // insert string to write into buffer
+    // let data = b"Hello from the other side!";
+    // buf[..data.len()].copy_from_slice(data);
 
-    syscall!(WRITE, 1, buf.as_ptr() as usize, 26); // write to /dev/stdout
+    // syscall!(WRITE, 1, buf.as_ptr() as usize, 26); // write to /dev/stdout
+
+    syscall::service::spawn("/bin/hello.bin", &[]);
+
+    kprintln!("hello??");
+
+    syscall::service::spawn("/bin/hello.bin", &[]);
 
     loop {}
 
@@ -70,3 +77,5 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     // print the data
     // println!("Data read from sector {}: {:?}", sector, core::str::from_utf8(&buffer).unwrap());
 }
+
+// make sure heap init function is calling init_process_addr: FIXME

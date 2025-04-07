@@ -4,15 +4,15 @@ use alloc::string::ToString;
 use log::{trace, warn};
 use spin::Mutex;
 
-use crate::internal::{
+use crate::{internal::{
     file::Stream,
     fs::FileHandle,
-    io::{Device, FILES, File},
-};
+    io::{Device, File, FILES},
+}, kprintln};
 
 use super::{
     file::{self, IOEvent},
-    io,
+    io, process,
 };
 
 /// Error number of the last error
@@ -147,6 +147,7 @@ pub use service::init;
 
 /// Dispatch a syscall, given the syscall number and arguments
 pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -> isize {
+    kprintln!("dispatch syscall: {} {} {} {}", n, arg1, arg2, arg3);
     match n {
         READ => {
             let fd = arg1;
@@ -156,7 +157,10 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
         }
         WRITE => {
             let fd = arg1;
-            let buf = unsafe { core::slice::from_raw_parts(arg2 as *const u8, arg3) };
+            let actual_addr = crate::internal::process::ptr_from_addr(arg2 as u64);
+            let buf = unsafe { core::slice::from_raw_parts(actual_addr, arg3) };
+
+            kprintln!("write: {} {:?}", fd, buf.to_vec());
 
             service::write(fd, buf)
         }
@@ -177,7 +181,9 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, _arg4: usize) -
             service::flush(fd)
         }
         EXIT => {
-            unimplemented!("EXIT")
+            process::exit();
+            kprintln!("welcome back");
+            0
         }
         SLEEP => {
             let ns = arg1;

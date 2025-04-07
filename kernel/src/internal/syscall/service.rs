@@ -296,12 +296,11 @@ pub fn spawn(path: &str, args: &[&str]) -> isize {
 
     let args_ptr = args.as_ptr() as usize;
 
-    let args_len = args.len() as u64;
+    let args_len = args.len();
 
-    crate::internal::process::Process::spawn(
-        buf,
-        args_ptr as usize,
-        args_len as usize,
-    );
-    0
+    if let Err(code) = crate::internal::process::Process::spawn(&buf, args_ptr, args_len) {
+        code as isize
+    } else {
+        unreachable!(); // The kernel switched to the child process
+    }
 }

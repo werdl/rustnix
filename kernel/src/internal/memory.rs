@@ -1,13 +1,17 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+use log::warn;
 use spin::Once;
 use x86_64::structures::paging::page_table::FrameError;
 use x86_64::structures::paging::{Mapper, OffsetPageTable, PageTable, PageTableFlags};
 use x86_64::{PhysAddr, VirtAddr};
-use log::warn;
 
 /// The offset of the physical memory
 static PHYSICAL_MEMORY_OFFSET: Once<u64> = Once::new(); // will get overwritten by init
 static MEMORY_MAP: Once<&'static bootloader::bootinfo::MemoryMap> = Once::new(); // will get overwritten by init
+static ALLOCATED_FRAMES: AtomicUsize = AtomicUsize::new(0);
 
+/// fetch the physical memory offset )
 pub fn physical_memory_offset() -> VirtAddr {
     VirtAddr::new(
         *PHYSICAL_MEMORY_OFFSET
@@ -16,6 +20,7 @@ pub fn physical_memory_offset() -> VirtAddr {
     )
 }
 
+/// The active level 4 page table
 pub unsafe fn active_level_4_table() -> &'static mut PageTable {
     let (level_4_table_frame, _) = x86_64::registers::control::Cr3::read();
 
@@ -108,7 +113,6 @@ use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
 /// A FrameAllocator that returns usable frames from the bootloader's memory map
 pub struct BootInfoFrameAllocator {
     memory_map: &'static MemoryMap,
-    next: usize,
 }
 
 impl BootInfoFrameAllocator {
@@ -116,7 +120,6 @@ impl BootInfoFrameAllocator {
     pub fn init(memory_map: &'static MemoryMap) -> Self {
         BootInfoFrameAllocator {
             memory_map,
-            next: 0,
         }
     }
 
@@ -131,9 +134,10 @@ impl BootInfoFrameAllocator {
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
-        let frame = self.usable_frames().nth(self.next);
-        self.next += 1;
-        frame
+        let next = ALLOCATED_FRAMES.fetch_add(1, Ordering::SeqCst);
+        // FIXME: When the heap is larger than a few megabytes,
+        // creating an iterator for each allocation become very slow.
+        self.usable_frames().nth(next)
     }
 }
 
@@ -161,26 +165,24 @@ pub fn frame_allocator() -> BootInfoFrameAllocator {
     unsafe { BootInfoFrameAllocator::init(MEMORY_MAP.get_unchecked()) }
 }
 
-pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: usize, size: usize) -> Result<(), ()> {
+pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: u64, size: usize) -> Result<(), ()> {
     let size = size.saturating_sub(1) as u64;
+    let mut frame_allocator = frame_allocator();
 
     let pages = {
-        let start_page = Page::containing_address(VirtAddr::new(addr as u64));
-        let end_page = Page::containing_address(VirtAddr::new(addr as u64 + size));
+        let start_page = Page::containing_address(VirtAddr::new(addr));
+        let end_page = Page::containing_address(VirtAddr::new(addr + size));
         Page::range_inclusive(start_page, end_page)
     };
 
     let flags =
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
 
-    let mut frame_allocator = frame_allocator();
-
     for page in pages {
         if let Some(frame) = frame_allocator.allocate_frame() {
-            let res = unsafe {
-                mapper.map_to(page, frame, flags, &mut frame_allocator)
-            };
+            let res = unsafe { mapper.map_to(page, frame, flags, &mut frame_allocator) };
             if let Ok(mapping) = res {
+                //debug!("Mapped {:?} to {:?}", page, frame);
                 mapping.flush();
             } else {
                 warn!("Could not map {:?} to {:?}", page, frame);
@@ -198,20 +200,19 @@ pub fn alloc_pages(mapper: &mut OffsetPageTable, addr: usize, size: usize) -> Re
     Ok(())
 }
 
-pub fn free_pages(mapper: &mut OffsetPageTable, addr: usize , size: usize) {
+pub fn free_pages(mapper: &mut OffsetPageTable, addr: u64, size: usize) {
     let size = size.saturating_sub(1) as u64;
 
     let pages = {
-        let start_page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(addr as u64));
-        let end_page = Page::containing_address(VirtAddr::new(addr as u64 + size));
+        let start_page: Page<Size4KiB> = Page::containing_address(VirtAddr::new(addr));
+        let end_page = Page::containing_address(VirtAddr::new(addr + size));
         Page::range_inclusive(start_page, end_page)
     };
 
     for page in pages {
-        if let Ok(mapping) = mapper.unmap(page) {
-            mapping.1.flush();
-        } else {
-            warn!("Could not unmap {:?}", page);
+        let res =  mapper.unmap(page);
+        if let Err(_err) = res {
+            // we don't warn here because the process exiter will unmap all MAX_PROC_SIZE
         }
     }
 }

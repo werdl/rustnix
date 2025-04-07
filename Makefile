@@ -6,21 +6,32 @@ KERNEL_DIR = kernel
 FS_LOADER_DIR = fs-loader
 KERNEL_BIN = $(KERNEL_DIR)/target/$(TARGET_NAME)/debug/bootimage-rustnix.bin
 DISK_IMG = $(FS_LOADER_DIR)/disk.img
+ASM_OUT_DIR = disk/bin
+ASM_FILES = $(wildcard disk/src/*.S)
 
-FEATURES ?=
+FEATURES ?= debug_log
 
-.PHONY: all kernel bootimage fs-loader run clean
+.PHONY: all assemble kernel bootimage fs-loader run clean
 
 all: run
 
-kernel:
+assemble:
+	@echo "Assembling assembly files..."
+	@for file in $(ASM_FILES); do \
+        nasm $$file -o $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
+        echo -ne '\x7FBIN' | cat - $(ASM_OUT_DIR)/$$(basename $$file .S).bin > $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp &&mv $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
+    done
+	@echo "Assembly completed."
+
+
+kernel: assemble
 	@echo "Building kernel..."
-	@cd $(KERNEL_DIR) && cargo build --target $(TARGET) $(FEATURES)
+	@cd $(KERNEL_DIR) && cargo build --target $(TARGET) --features $(FEATURES)
 	@echo "Kernel built successfully."
 
 bootimage: kernel
 	@echo "Creating bootable image..."
-	@cd $(KERNEL_DIR) && cargo bootimage --target $(TARGET) $(FEATURES)
+	@cd $(KERNEL_DIR) && cargo bootimage --target $(TARGET) --features $(FEATURES)
 	@echo "Bootable image created successfully."
 
 fs-loader:

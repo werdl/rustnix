@@ -1,8 +1,13 @@
 use crate::internal::gdt;
+use crate::internal::memory::physical_memory_offset;
+use crate::internal::process::ExitCode;
 use crate::internal::{interrupts, syscall};
-use crate::kprint;
+use crate::{kprint, kprintln};
 use lazy_static::lazy_static;
-use log::{error, warn};
+use log::{error, trace, warn};
+use x86_64::registers::control::Cr2;
+use x86_64::structures::paging::OffsetPageTable;
+use x86_64::VirtAddr;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 lazy_static! {
@@ -12,9 +17,15 @@ lazy_static! {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         unsafe {
-            idt.double_fault
-                .set_handler_fn(double_fault_handler)
-                .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+            idt.double_fault.
+                set_handler_fn(double_fault_handler).
+                set_stack_index(gdt::DOUBLE_FAULT_IST);
+            idt.page_fault.
+                set_handler_fn(page_fault_handler).
+                set_stack_index(gdt::PAGE_FAULT_IST);
+            idt.general_protection_fault.
+                set_handler_fn(general_protection_fault_handler).
+                set_stack_index(gdt::GENERAL_PROTECTION_FAULT_IST);
 
             let f = wrapped_syscall_handler as *mut fn();
             idt[0x80].
@@ -98,16 +109,55 @@ use crate::hlt_loop;
 use x86_64::structures::idt::PageFaultErrorCode;
 
 extern "x86-interrupt" fn page_fault_handler(
-    stack_frame: InterruptStackFrame,
+    _stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
-    use x86_64::registers::control::Cr2;
+    let addr = Cr2::read().unwrap().as_u64();
 
-    error!("EXCEPTION: PAGE FAULT");
-    error!("Accessed Address: {:?}", Cr2::read());
-    error!("Error Code: {:?}", error_code);
-    error!("{:#?}", stack_frame);
-    hlt_loop();
+    let page_table = unsafe { crate::internal::process::page_table() };
+    let mut mapper = unsafe {
+        OffsetPageTable::new(page_table, physical_memory_offset())
+    };
+
+    if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
+        if crate::internal::memory::alloc_pages(&mut mapper, addr, 1).is_err() {
+            error!(
+                "Error: Could not allocate page at {:#X}\n",
+                addr
+            );
+            if error_code.contains(PageFaultErrorCode::USER_MODE) {
+                kprintln!(
+                    "Error: Page fault at {:#X} with error code {:#X}\n",
+                    addr,
+                    error_code.bits()
+                );
+                crate::internal::process::exit();
+            } else {
+                hlt_loop();
+            }
+        }
+    } else if error_code.contains(PageFaultErrorCode::USER_MODE) {
+        // TODO: This should be removed when the process page table is no
+        // longer a simple clone of the kernel page table. Currently a process
+        // is executed from its kernel address that is shared with the process.
+        let start = (addr / 4096) * 4096;
+        if crate::internal::memory::alloc_pages(&mut mapper, start, 4096).is_ok() {
+            if crate::internal::process::is_userspace(start) {
+                let code_addr = crate::internal::process::code_addr();
+                let src = (code_addr + start) as *mut u8;
+                let dst = start as *mut u8;
+                unsafe {
+                    core::ptr::copy_nonoverlapping(src, dst, 4096);
+                }
+            }
+        }
+    } else {
+        panic!(
+            "Error: Page fault at {:#X} with error code {:#X}\n",
+            addr,
+            error_code.bits()
+        );
+    }
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -120,6 +170,16 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     warn!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn general_protection_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    panic!(
+        "EXCEPTION: GENERAL PROTECTION FAULT\n{:#?}\nError code: {:#X}",
+        stack_frame, error_code
+    );
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -204,8 +264,13 @@ macro_rules! wrap {
 
 wrap!(syscall_handler => wrapped_syscall_handler);
 
-extern "sysv64" fn syscall_handler(_stack_frame: &mut InterruptStackFrame, regs: &mut process::Registers) {
+extern "sysv64" fn syscall_handler(
+    _stack_frame: &mut InterruptStackFrame,
+    regs: &mut process::Registers,
+) {
     let n = regs.rax;
+
+    kprintln!("Syscall: {} (rax: {:#X})", n, regs.rax);
 
     // The registers order follow the System V ABI convention
     let arg1 = regs.rdi;
@@ -217,7 +282,7 @@ extern "sysv64" fn syscall_handler(_stack_frame: &mut InterruptStackFrame, regs:
 
     let res = syscall::dispatch(n as usize, arg1, arg2, arg3, arg4);
 
-    regs.rax = res;
+    regs.rax = res as usize;
 
     // Restore CPU context before exiting a process - not needed right now
 
