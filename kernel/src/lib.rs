@@ -175,7 +175,8 @@ pub fn init_logger() {
         .unwrap();
 }
 
-pub static ASCII_ART: &str = r"______          _         _
+pub static ASCII_ART: &str = r"
+______          _         _
 | ___ \        | |       (_)
 | |_/ /   _ ___| |_ _ __  ___  __
 |    / | | / __| __| '_ \| \ \/ /
@@ -243,8 +244,8 @@ pub fn init(boot_info: &'static BootInfo) {
     info!("Users initialized");
 
     serial_print!(
-        "Kernel initialized in {} ms",
-        clk::get_boot_time_ns() / 1_000_000
+        "Kernel initialized in {:.06} s",
+        clk::get_time_since_boot()
     );
 
     #[cfg(feature = "ascii-art")]

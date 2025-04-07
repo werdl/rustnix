@@ -16,6 +16,7 @@ FEATURES ?= debug_log
 all: run
 
 assemble:
+	@mkdir -p $(ASM_OUT_DIR)
 	@echo "Assembling assembly files..."
 	@for file in $(ASM_FILES); do \
         nasm $$file -o $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \

@@ -33,6 +33,9 @@ jobs:
     - name: Install QEMU
       run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
 
+    - name: Install nasm
+      run: sudo apt install nasm
+
     - name: Cache cargo registry
       uses: actions/cache@v3
       with:
