@@ -52,13 +52,17 @@
 |------|----|----|----|----|----|------|
 |1|`read`|`fd`|`buf` (ptr)|`buf_len`||`nread`|
 |2|`write`|`fd`|`buf` (ptr)|`buf_len`||`nwritten`|
-|3|`open`|`path` (ptr)|`flags`|`mode` (bitfield)||`fd`|
+|3|`open`|`path` (ptr)|`path_len`|`mode` (bitfield)||`fd`|
 |4|`close`|`fd`||||0 or -1 (err)|
 |5|`flush`|`fd`||||0 or -1 (err)|
 |7|`sleep`|`nanoseconds`||||0|
 |8|`wait` (uses TSC)|`nanoseconds`||||0|
+|9|`getpid`||||||`pid`|
+|10|`exec`|`path_addr`|`path_len`|`args_ptr`|`args_len`||`pid`|
 |13|`stop`|`kind` (0=shutdown, 1=reboot)|||||
 |18|`alloc`|`size`|`align`|||`ptr`|
 |19|`free`|`ptr`|`size`|`align`|||
-|20|`geterrno`|||||`errno`|
-|21|`poll`|`fd`|`event` (1=read, 2=write)|||`ready`|
+|21|`geterrno`|||||`errno`|
+|22|`poll`|`fd`|`event` (1=read, 2=write)|||`ready`|
+|23|`boottime`|||||`boot_time` (nanos)|
+|24|`gettime`|||||`time` (seconds)|

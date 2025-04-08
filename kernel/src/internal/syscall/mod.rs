@@ -196,7 +196,7 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize) ->
             service::wait(nanos)
         }
         GETPID => {
-            unimplemented!("GETPID")
+            crate::internal::process::pid() as isize
         }
         EXEC => {
             let path_addr = crate::internal::process::ptr_from_addr(arg1 as u64);
