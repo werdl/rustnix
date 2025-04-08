@@ -57,11 +57,13 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     let args_ptr = args.as_ptr() as usize;
     let args_len = args.len();
 
-    let path = "/bin/myinfo.bin";
+    let path = "/bin/hello.o";
     let path_ptr = path.as_ptr() as usize;
     let path_len = path.len();
 
     syscall!(EXEC, path_ptr, path_len, args_ptr, args_len);
+
+    kprintln!("and we're back");
 
     loop {}
 

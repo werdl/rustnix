@@ -1476,11 +1476,11 @@ pub fn init() {
             phys_fs: PhysFs {
                 superblock: Superblock {
                     magic_number: MAGIC_NUMBER,
-                    disk_size: 4096 + 1024 + 1, // superblock + inode table
+                    disk_size: 8192 + 1024 + 1, // superblock + inode table
                     inode_table_size: 1024,
                     data_block_size: 512,
                     num_inodes: 1024,
-                    num_data_blocks: 4096,
+                    num_data_blocks: 8192,
                 },
                 inode_table: vec![
                     Inode {
@@ -1493,7 +1493,7 @@ pub fn init() {
                     };
                     1024
                 ],
-                data_blocks: vec![DataBlock { data: [0; 512] }; 4096],
+                data_blocks: vec![DataBlock { data: [0; 512] }; 8192],
             },
             bus: 0,
             dsk: 0,

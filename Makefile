@@ -19,10 +19,17 @@ assemble:
 	@mkdir -p $(ASM_OUT_DIR)
 	@echo "Assembling assembly files..."
 	@for file in $(ASM_FILES); do \
-        nasm $$file -o $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
-        echo -ne '\x7FBIN' | cat - $(ASM_OUT_DIR)/$$(basename $$file .S).bin > $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp &&mv $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
-    done
+		nasm $$file -o $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
+		echo -ne '\x7FBIN' | cat - $(ASM_OUT_DIR)/$$(basename $$file .S).bin > $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp && mv $(ASM_OUT_DIR)/$$(basename $$file .S).bin.tmp $(ASM_OUT_DIR)/$$(basename $$file .S).bin; \
+	done
 	@echo "Assembly completed."
+
+	@echo "Compiling C files..."
+	@for file in $(wildcard disk/src/c/*.c); do \
+		tcc $$file -o $(ASM_OUT_DIR)/$$(basename $$file .c).o -nostdlib -static -nostdinc; \
+		echo "Compiled $$file to $(ASM_OUT_DIR)/$$(basename $$file .c).o"; \
+	done
+	@echo "C file compilation completed."
 
 
 kernel: assemble

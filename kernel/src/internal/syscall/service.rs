@@ -1,6 +1,8 @@
 use alloc::vec;
 
-use crate::internal::{devices::proc::ProcInfo, file::FileFlags, fs::get_buffer_size, process::ExitCode};
+use crate::internal::{
+    devices::proc::ProcInfo, file::FileFlags, fs::get_buffer_size, process::ExitCode,
+};
 
 use super::*;
 
@@ -37,7 +39,7 @@ pub fn init() {
 
         for i in 0..io::NUM_DEVICES {
             let device = Device::try_from((i as u8, 0)).unwrap();
-            files.insert(i as isize, File::Device(device));
+            files.insert(i, File::Device(device));
         }
     });
 }
@@ -77,11 +79,14 @@ fn open_proc_file(proc_path: &str) -> isize {
     }
 
     let mut files = FILES.lock();
-    let fd = files.len() as isize;
+    let fd = files.len();
 
-    files.insert(fd, File::ProcInfo(ProcInfo::new(pid.unwrap(), proc_path.to_string())));
-    kprintln!("{:?}", files.get(&(fd as isize)));
-    fd
+    files.insert(
+        fd,
+        File::ProcInfo(ProcInfo::new(pid.unwrap(), proc_path.to_string())),
+    );
+    kprintln!("{:?}", files.get(&fd));
+    fd as isize
 }
 
 /// open a file (OPEN)
@@ -106,32 +111,30 @@ pub fn open(path: &str, flags: u8) -> isize {
 
     let mut files = FILES.lock();
 
-    let fd = files.len() as isize;
+    let fd = files.len();
 
     files.insert(fd, resource);
-    fd
+    fd as isize
 }
 
 /// write to a file descriptor (WRITE)
 pub fn write(fd: usize, buf: &[u8]) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+    let resource: Option<&mut File> = files.get_mut(&fd);
 
     match resource {
-        Some(resource) => {
-            match resource.write(buf) {
-                Ok(bytes_written) => bytes_written as isize,
-                Err(err) => {
-                    set_errno(err.into());
-                    -1
-                }
+        Some(resource) => match resource.write(buf) {
+            Ok(bytes_written) => bytes_written as isize,
+            Err(err) => {
+                set_errno(err.into());
+                -1
             }
         },
         None => {
             set_errno(Error::EBADF);
             -1
-        },
+        }
     }
 }
 
@@ -139,23 +142,20 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 pub fn read(fd: usize, buf: &mut [u8]) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+    let resource: Option<&mut File> = files.get_mut(&(fd));
 
     match resource {
-        Some(resource) => {
-            match resource.read(buf) {
-                Ok(bytes_read) => bytes_read as isize,
-                Err(err) => {
-                    kprintln!("Error reading from file descriptor: {:?}", err);
-                    set_errno(err.into());
-                    -1
-                }
+        Some(resource) => match resource.read(buf) {
+            Ok(bytes_read) => bytes_read as isize,
+            Err(err) => {
+                set_errno(err.into());
+                -1
             }
         },
         None => {
             set_errno(Error::EBADF);
             -1
-        },
+        }
     }
 }
 
@@ -163,22 +163,20 @@ pub fn read(fd: usize, buf: &mut [u8]) -> isize {
 pub fn close(fd: usize) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<File> = files.remove(&(fd as isize));
+    let resource: Option<File> = files.remove(&fd);
 
     match resource {
-        Some(mut resource) => {
-            match resource.close() {
-                Ok(()) => 0,
-                Err(err) => {
-                    set_errno(err.into());
-                    -1
-                }
+        Some(mut resource) => match resource.close() {
+            Ok(()) => 0,
+            Err(err) => {
+                set_errno(err.into());
+                -1
             }
         },
         None => {
             set_errno(Error::EBADF);
             -1
-        },
+        }
     }
 }
 
@@ -186,22 +184,20 @@ pub fn close(fd: usize) -> isize {
 pub fn flush(fd: usize) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+    let resource: Option<&mut File> = files.get_mut(&fd);
 
     match resource {
-        Some(resource) => {
-            match resource.flush() {
-                Ok(()) => 0,
-                Err(err) => {
-                    set_errno(err.into());
-                    -1
-                }
+        Some(resource) => match resource.flush() {
+            Ok(()) => 0,
+            Err(err) => {
+                set_errno(err.into());
+                -1
             }
         },
         None => {
             set_errno(Error::EBADF);
             -1
-        },
+        }
     }
 }
 
@@ -224,7 +220,7 @@ pub fn stop(stop_type: usize) -> isize {
 pub fn poll(fd: usize, io_event: usize) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+    let resource: Option<&mut File> = files.get_mut(&fd);
 
     let io_event = match io_event {
         1 => IOEvent::Read,
@@ -236,9 +232,7 @@ pub fn poll(fd: usize, io_event: usize) -> isize {
     };
 
     match resource {
-        Some(resource) => {
-            resource.poll(io_event) as isize
-        },
+        Some(resource) => resource.poll(io_event) as isize,
         None => {
             set_errno(Error::EBADF);
             -1
@@ -265,16 +259,14 @@ pub fn wait(nanos: usize) -> isize {
 pub fn seek(fd: usize, pos: usize) -> isize {
     let mut files = FILES.lock();
 
-    let resource: Option<&mut File> = files.get_mut(&(fd as isize));
+    let resource: Option<&mut File> = files.get_mut(&fd);
 
     match resource {
-        Some(resource) => {
-            match resource.seek(pos) {
-                Ok(new_pos) => new_pos as isize,
-                Err(err) => {
-                    set_errno(err.into());
-                    -1
-                }
+        Some(resource) => match resource.seek(pos) {
+            Ok(new_pos) => new_pos as isize,
+            Err(err) => {
+                set_errno(err.into());
+                -1
             }
         },
         None => {
@@ -304,7 +296,6 @@ pub fn spawn(path: &str, args_ptr: usize, args_len: usize) -> isize {
     if fd < 0 {
         return -1;
     }
-
 
     let buf_size = get_buffer_size(0, 1, &path);
     if buf_size.is_err() {

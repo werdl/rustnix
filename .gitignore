@@ -3,3 +3,4 @@ target
 build_and_run.sh
 *.iso
 *.img
+*.rlib

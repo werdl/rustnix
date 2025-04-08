@@ -21,7 +21,6 @@
 - [ ] Basic IPC
 
 ## Short-term todo
-- [ ] replace all syscall return types with `usize`
 - [ ] fully implement `/proc` hierarchy
 
 ## Thanks

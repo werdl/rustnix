@@ -36,6 +36,9 @@ jobs:
     - name: Install nasm
       run: sudo apt install nasm
 
+    - name: Install tcc
+      run: sudo apt install tcc
+
     - name: Cache cargo registry
       uses: actions/cache@v3
       with:

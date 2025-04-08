@@ -142,36 +142,6 @@ pub const TIME: usize = 0x18;
 /// seek to a position in a file descriptor - `seek(fd, pos)`
 pub const SEEK: usize = 0x19;
 
-fn syscall_name(n: usize) -> &'static str {
-    match n {
-        READ => "read",
-        WRITE => "write",
-        OPEN => "open",
-        CLOSE => "close",
-        FLUSH => "flush",
-        EXIT => "exit",
-        SLEEP => "sleep",
-        WAIT => "wait",
-        GETPID => "getpid",
-        EXEC => "exec",
-        FORK => "fork",
-        GETTID => "gettid",
-        STOP => "stop",
-        WAITPID => "waitpid",
-        CONNECT => "connect",
-        ACCEPT => "accept",
-        LISTEN => "listen",
-        ALLOC => "alloc",
-        FREE => "free",
-        KIND => "kind",
-        GETERRNO => "get_errno",
-        POLL => "poll",
-        BOOTTIME => "boot_time",
-        TIME => "unix_time",
-        SEEK => "seek",
-        _ => "<unknown>",
-    }
-}
 
 /// internal syscall module
 mod service;
@@ -179,7 +149,6 @@ pub use service::init;
 
 /// Dispatch a syscall, given the syscall number and arguments
 pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize) -> isize {
-    trace!("syscall: {}: {} {} {}, {}", syscall_name(n), arg1, arg2, arg3, arg4);
     match n {
         READ => {
             let fd = arg1;

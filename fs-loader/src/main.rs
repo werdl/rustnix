@@ -71,9 +71,10 @@ fn main() {
     virtfs.phys_fs.write_to_disk(0, 0).unwrap();
 
     for (file_name, contents) in files.clone() {
-        println!("Handled file: {}, wrote {}", file_name, human_readable(contents.len() as u64));
         virtfs.phys_fs.create_file(file_name.as_str(), [7,7,7], 0).unwrap();
+
         virtfs.phys_fs.write_file(file_name.as_str(), &contents, Some([7,7,7]), Some(0)).unwrap();
+        println!("Handled file: {}, wrote {}", file_name, human_readable(contents.len() as u64));
     }
 
     virtfs.phys_fs.write_to_disk(0, 0).unwrap();

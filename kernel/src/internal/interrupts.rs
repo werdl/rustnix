@@ -2,10 +2,10 @@ use crate::internal::gdt;
 use crate::internal::memory::physical_memory_offset;
 use crate::internal::{interrupts, syscall};
 use lazy_static::lazy_static;
-use log::{error, warn};
+use log::{error, trace, warn};
 use x86_64::registers::control::Cr2;
 use x86_64::structures::paging::OffsetPageTable;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, InterruptStackFrameValue};
 
 lazy_static! {
     /// Array of interrupt handlers
@@ -257,8 +257,40 @@ macro_rules! wrap {
 
 wrap!(syscall_handler => wrapped_syscall_handler);
 
+
+fn syscall_name(n: usize) -> &'static str {
+    match n {
+        syscall::READ => "read",
+        syscall::WRITE => "write",
+        syscall::OPEN => "open",
+        syscall::CLOSE => "close",
+        syscall::FLUSH => "flush",
+        syscall::EXIT => "exit",
+        syscall::SLEEP => "sleep",
+        syscall::WAIT => "wait",
+        syscall::GETPID => "getpid",
+        syscall::EXEC => "exec",
+        syscall::FORK => "fork",
+        syscall::GETTID => "gettid",
+        syscall::STOP => "stop",
+        syscall::WAITPID => "waitpid",
+        syscall::CONNECT => "connect",
+        syscall::ACCEPT => "accept",
+        syscall::LISTEN => "listen",
+        syscall::ALLOC => "alloc",
+        syscall::FREE => "free",
+        syscall::KIND => "kind",
+        syscall::GETERRNO => "get_errno",
+        syscall::POLL => "poll",
+        syscall::BOOTTIME => "boot_time",
+        syscall::TIME => "unix_time",
+        syscall::SEEK => "seek",
+        _ => "<unknown>",
+    }
+}
+
 extern "sysv64" fn syscall_handler(
-    _stack_frame: &mut InterruptStackFrame,
+    stack_frame: &mut InterruptStackFrame,
     regs: &mut process::Registers,
 ) {
     let n = regs.rax;
@@ -269,13 +301,35 @@ extern "sysv64" fn syscall_handler(
     let arg3 = regs.rdx;
     let arg4 = regs.r8;
 
-    // Backup CPU context before spawning a process - not needed right now
+    // backup CPU context
+    if n == syscall::EXEC {
+        process::set_stack_frame(**stack_frame);
+        process::set_registers(*regs);
+    }
 
     let res = syscall::dispatch(n as usize, arg1, arg2, arg3, arg4);
 
     regs.rax = res as usize;
 
-    // Restore CPU context before exiting a process - not needed right now
+    trace!("Syscall: {}({:#X}, {:#X}, {:#X}, {:#X}) -> {:#X}",
+        syscall_name(n as usize),
+        arg1,
+        arg2,
+        arg3,
+        arg4,
+        res
+    );
+
+    // Restore CPU context before exiting a process
+    if n == syscall::EXIT {
+        let sf = crate::internal::process::get_stack_frame();
+        unsafe {
+            let inner = stack_frame.as_mut().extract_inner();
+            let ptr = inner as *mut InterruptStackFrameValue;
+            core::ptr::write_volatile(ptr, sf);
+            core::ptr::write_volatile(regs, crate::internal::process::get_registers());
+        }
+    }
 
     unsafe { PICS.lock().notify_end_of_interrupt(0x80) };
 }
