@@ -17,7 +17,17 @@ use rustnix::kprintln;
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    kprintln!("{}", info);
+    use alloc::format;
+
+    rustnix::internal::vga::write_str(
+        format!(
+            "PANIC: {}\n",
+            info.message()
+        )
+        .as_str(),
+        rustnix::internal::vga::Color::Red,
+        rustnix::internal::vga::Color::Black,
+    );
     rustnix::hlt_loop()
 }
 
@@ -47,7 +57,7 @@ fn kmain(boot_info: &'static BootInfo) -> ! {
     let args_ptr = args.as_ptr() as usize;
     let args_len = args.len();
 
-    let path = "/bin/hello.bin";
+    let path = "/bin/myinfo.bin";
     let path_ptr = path.as_ptr() as usize;
     let path_len = path.len();
 

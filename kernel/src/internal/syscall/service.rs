@@ -80,6 +80,7 @@ fn open_proc_file(proc_path: &str) -> isize {
     let fd = files.len() as isize;
 
     files.insert(fd, File::ProcInfo(ProcInfo::new(pid.unwrap(), proc_path.to_string())));
+    kprintln!("{:?}", files.get(&(fd as isize)));
     fd
 }
 
@@ -88,6 +89,10 @@ pub fn open(path: &str, flags: u8) -> isize {
     let path = &file::canonicalise(path);
     if path.starts_with("/dev/") {
         return open_block_device(path);
+    }
+
+    if path.starts_with("/proc/") {
+        return open_proc_file(path);
     }
 
     let file_handle = FileHandle::new_with_likely_fs(path.to_string(), flags);
@@ -141,6 +146,7 @@ pub fn read(fd: usize, buf: &mut [u8]) -> isize {
             match resource.read(buf) {
                 Ok(bytes_read) => bytes_read as isize,
                 Err(err) => {
+                    kprintln!("Error reading from file descriptor: {:?}", err);
                     set_errno(err.into());
                     -1
                 }

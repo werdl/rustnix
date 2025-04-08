@@ -1,3 +1,4 @@
+; echo to /dev/stdout
 [bits 64]
 
 section .data

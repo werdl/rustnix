@@ -186,14 +186,13 @@ pub fn dispatch(n: usize, arg1: usize, arg2: usize, arg3: usize, arg4: usize) ->
             let actual_addr = crate::internal::process::ptr_from_addr(arg2 as u64);
             let buf = unsafe { core::slice::from_raw_parts_mut(actual_addr, arg3) };
 
+
             service::read(fd, buf)
         }
         WRITE => {
             let fd = arg1;
             let actual_addr = crate::internal::process::ptr_from_addr(arg2 as u64);
             let buf = unsafe { core::slice::from_raw_parts(actual_addr, arg3) };
-
-            kprintln!("write: {} {:?}", fd, buf.to_vec());
 
             service::write(fd, buf)
         }

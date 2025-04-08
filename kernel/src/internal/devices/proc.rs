@@ -1,11 +1,14 @@
 use alloc::{format, string::String};
 
-use crate::internal::{file::Stream, fs::FsError, io::File, process::PROCESS_TABLE, user};
+use crate::{internal::{file::Stream, fs::FsError, process::PROCESS_TABLE, user}, kprintln};
 
 /// process handle
 #[derive(Debug, Clone)]
 pub struct ProcInfo {
+    /// process id
     pub pid: u32,
+    /// path to the proc file
+    /// e.g. /proc/<pid>/used_memory
     pub path: String,
 }
 
@@ -13,7 +16,8 @@ impl ProcInfo {
     fn resolve(&self) -> Result<String, FsError> {
         // path will be in the form <route>, where <route> forms a part of the overall path /proc/pid/<route>
         // e.g. /proc/1/used_memory -> used_memory
-        match self.path.as_str() {
+        let route = self.path.split('/').last().ok_or(FsError::InvalidPath)?;
+        match route {
             "ppid" => Ok(format!(
                 "{}",
                 PROCESS_TABLE
@@ -67,6 +71,7 @@ impl ProcInfo {
         }
     }
 
+    /// create a new proc info
     pub fn new(pid: u32, path: String) -> Self {
         return Self { pid, path };
     }
@@ -75,6 +80,7 @@ impl ProcInfo {
 impl Stream for ProcInfo {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, crate::internal::file::FileError> {
         let out = self.resolve()?;
+        kprintln!("proc info: {:?}", out);
         let bytes = out.as_bytes();
 
         // safely copy the bytes to the buffer

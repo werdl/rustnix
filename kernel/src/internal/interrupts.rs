@@ -1,7 +1,6 @@
 use crate::internal::gdt;
 use crate::internal::memory::physical_memory_offset;
 use crate::internal::{interrupts, syscall};
-use crate::{kprint, kprintln};
 use lazy_static::lazy_static;
 use log::{error, warn};
 use x86_64::registers::control::Cr2;
@@ -156,7 +155,6 @@ extern "x86-interrupt" fn page_fault_handler(
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    kprint!(".");
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
@@ -264,8 +262,6 @@ extern "sysv64" fn syscall_handler(
     regs: &mut process::Registers,
 ) {
     let n = regs.rax;
-
-    kprintln!("Syscall: {} (rax: {:#X})", n, regs.rax);
 
     // The registers order follow the System V ABI convention
     let arg1 = regs.rdi;

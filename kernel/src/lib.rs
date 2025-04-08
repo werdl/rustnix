@@ -92,6 +92,7 @@ impl log::Log for SerialLogger {
             let mut log_message = String::new();
             log_message.push_str(&format!("[{:.6}] ", clk::get_time_since_boot()));
             log_message.push_str("[ ");
+            kprint!("{}", log_message);
 
             match level {
                 Level::Error => {
@@ -99,26 +100,32 @@ impl log::Log for SerialLogger {
                 }
                 Level::Warn => {
                     log_message.push_str("WARN");
+                    crate::internal::vga::write_str("WARN", Color::Yellow, Color::Black);
                 }
                 Level::Info => {
                     log_message.push_str("INFO");
+                    crate::internal::vga::write_str("INFO", Color::LightBlue, Color::Black);
                 }
                 Level::Debug => {
                     log_message.push_str("DEBUG");
+                    crate::internal::vga::write_str("DEBUG", Color::LightGreen, Color::Black);
                 }
                 Level::Trace => {
                     log_message.push_str("TRACE");
+                    crate::internal::vga::write_str("TRACE", Color::LightCyan, Color::Black);
                 }
             }
 
             match level {
                 Level::Warn | Level::Info => {
                     log_message.push(' ');
+                    kprint!(" ");
                 }
                 _ => {}
             }
 
             log_message.push_str(&format!("] {}", message));
+            kprint!("{}", &format!("] {}", message));
 
             #[cfg(feature = "trace_log")]
             {
@@ -126,15 +133,14 @@ impl log::Log for SerialLogger {
                 let file = record.file().unwrap_or("unknown");
                 let line = record.line().unwrap_or(0);
                 log_message.push_str(&format!(" [{}:{}:{}]\n", module_path, file, line));
+                kprintln!("{}", &format!(" [{}:{}:{}]", module_path, file, line));
             }
 
             match level {
                 Level::Error => {
                     panic!("{}", log_message);
                 }
-                _ => {
-                    kprint!("{}\n", log_message);
-                }
+                _ => {}
             }
         }
     }
@@ -243,10 +249,7 @@ pub fn init(boot_info: &'static BootInfo) {
     user::init();
     info!("Users initialized");
 
-    system_msg!(
-        "Kernel initialized in {:.06} s",
-        clk::get_time_since_boot()
-    );
+    system_msg!("Kernel initialized in {:.06} s", clk::get_time_since_boot());
 
     #[cfg(feature = "ascii-art")]
     {

@@ -19,8 +19,6 @@ use x86_64::structures::paging::{
     mapper::TranslateResult,
 };
 
-use crate::kprintln;
-
 use super::console::Console;
 use super::devices::null::Null;
 use super::file::FileFlags;
@@ -105,9 +103,13 @@ impl From<u8> for ExitCode {
 /// Process data
 #[derive(Clone, Debug)]
 pub struct ProcessData {
+    /// Environment variables
     pub env: BTreeMap<String, String>,
+    /// Current working directory
     pub dir: String,
+    /// User running the process
     pub user: Option<String>,
+    /// Handles for this process
     pub handles: [Option<Box<File>>; MAX_HANDLES],
 }
 
@@ -352,15 +354,20 @@ pub unsafe fn free(ptr: *mut u8, layout: Layout) {
 /// Process structure
 #[derive(Clone)]
 pub struct Process {
+    /// process id
     pub pid: usize,
+    /// parent process id
     pub ppid: usize,
+    /// code address
     pub code_addr: u64,
     stack_addr: u64,
     entry_point_addr: u64,
     page_table_frame: PhysFrame,
     stack_frame: Option<InterruptStackFrameValue>,
     registers: Registers,
+    /// process data (environment, working directory, user, file handles)
     pub data: ProcessData,
+    /// memory allocator
     pub allocator: Arc<LockedHeap>,
 }
 
@@ -388,11 +395,9 @@ impl Process {
                 let table = PROCESS_TABLE.read();
                 table[id].clone()
             };
-            kprintln!("spawned process {}", id);
             proc.exec(args_ptr, args_len);
             unreachable!(); // The kernel switched to the child process
         } else {
-            kprintln!("could not spawn process");
             Err(ExitCode::ExecError)
         }
     }
@@ -495,7 +500,6 @@ impl Process {
 
     // Switch to user mode and execute the program
     fn exec(&self, args_ptr: usize, args_len: usize) {
-        kprintln!("exec");
         let page_table = unsafe { page_table() };
         let mut mapper = unsafe {
             OffsetPageTable::new(
@@ -538,16 +542,6 @@ impl Process {
         unsafe {
             self.allocator.lock().init(heap_addr as *mut u8, heap_size);
         }
-
-        kprintln!(
-            "heap: {:#X}..{:#X}",
-            heap_addr,
-            heap_addr + heap_size as u64
-        );
-
-        //debug!("{:#X}..{:#X}: {} bytes for the args", args_addr, args_addr + 4096, 4096); // FIXME: args size
-        //debug!("{:#X}..{:#X}: {} bytes for the heap", heap_addr, heap_addr + heap_size as u64, heap_size);
-        //debug!("{:#X}..{:#X}: {} bytes for the stack", self.stack_addr - heap_size as u64, self.stack_addr, heap_size);
 
         set_pid(self.pid); // Change PID
 
