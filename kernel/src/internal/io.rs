@@ -11,7 +11,7 @@ use crate::{internal::{
     file::Stream,
 }, kprint};
 
-use super::{console::Console, devices::null::Null, fs::FileHandle};
+use super::{console::Console, devices::{null::Null, proc::ProcInfo}, fs::FileHandle};
 
 /// File table
 pub static FILES: Mutex<BTreeMap<isize, File>> = Mutex::new(BTreeMap::new());
@@ -149,6 +149,8 @@ pub enum File {
     File(FileHandle),
     /// A device
     Device(Device),
+    /// proc info
+    ProcInfo(ProcInfo),
 }
 
 impl Stream for Device {
@@ -224,6 +226,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.read(buf),
             File::Device(device) => device.read(buf),
+            File::ProcInfo(proc_info) => proc_info.read(buf),
         }
     }
 
@@ -231,6 +234,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.write(buf),
             File::Device(device) => device.write(buf),
+            File::ProcInfo(proc_info) => proc_info.write(buf),
         }
     }
 
@@ -238,6 +242,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.close(),
             File::Device(device) => device.close(),
+            File::ProcInfo(proc_info) => proc_info.close(),
         }
     }
 
@@ -245,6 +250,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.flush(),
             File::Device(device) => device.flush(),
+            File::ProcInfo(proc_info) => proc_info.flush(),
         }
     }
 
@@ -252,6 +258,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.poll(event),
             File::Device(device) => device.poll(event),
+            File::ProcInfo(proc_info) => proc_info.poll(event),
         }
     }
 
@@ -259,6 +266,7 @@ impl Stream for File {
         match self {
             File::File(file) => file.seek(pos),
             File::Device(device) => device.seek(pos),
+            File::ProcInfo(proc_info) => proc_info.seek(pos),
         }
     }
 }

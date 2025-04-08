@@ -243,7 +243,7 @@ pub fn init(boot_info: &'static BootInfo) {
     user::init();
     info!("Users initialized");
 
-    serial_print!(
+    system_msg!(
         "Kernel initialized in {:.06} s",
         clk::get_time_since_boot()
     );

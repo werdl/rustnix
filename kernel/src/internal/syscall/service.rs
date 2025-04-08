@@ -1,6 +1,6 @@
 use alloc::vec;
 
-use crate::internal::{file::FileFlags, fs::get_buffer_size, process::ExitCode};
+use crate::internal::{devices::proc::ProcInfo, file::FileFlags, fs::get_buffer_size, process::ExitCode};
 
 use super::*;
 
@@ -53,9 +53,34 @@ fn open_block_device(device_path: &str) -> isize {
         "/dev/random" => io::RAND as isize,
         _ => {
             warn!("Unknown device: {}, failing OPEN", device_path);
+            set_errno(Error::ENOENT);
             -1
         }
     }
+}
+
+/// open a proc info file
+fn open_proc_file(proc_path: &str) -> isize {
+    // will be in the format /proc/<pid>/<route>
+    let pid = proc_path.split('/').nth(2);
+    if pid.is_none() {
+        warn!("Invalid proc path: {}, failing OPEN", proc_path);
+        set_errno(Error::ENOENT);
+        return -1;
+    }
+
+    let pid = pid.unwrap().parse::<u32>();
+    if pid.is_err() {
+        warn!("Invalid proc path: {}, failing OPEN", proc_path);
+        set_errno(Error::ENOENT);
+        return -1;
+    }
+
+    let mut files = FILES.lock();
+    let fd = files.len() as isize;
+
+    files.insert(fd, File::ProcInfo(ProcInfo::new(pid.unwrap(), proc_path.to_string())));
+    fd
 }
 
 /// open a file (OPEN)

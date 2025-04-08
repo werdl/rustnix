@@ -20,6 +20,10 @@
 - [ ] Basic Userspace
 - [ ] Basic IPC
 
+## Short-term todo
+- [ ] replace all syscall return types with `usize`
+- [ ] fully implement `/proc` hierarchy
+
 ## Thanks
 ### Code
 - for the initial stages of this project, I followed [https://os.phil-opp.com/](https://os.phil-opp.com/)

@@ -6,3 +6,6 @@ pub mod rand;
 
 /// zero - implementation of /dev/zero
 pub mod zero;
+
+/// proc - implementation of /proc hierarchy
+pub mod proc;

@@ -105,10 +105,10 @@ impl From<u8> for ExitCode {
 /// Process data
 #[derive(Clone, Debug)]
 pub struct ProcessData {
-    env: BTreeMap<String, String>,
-    dir: String,
-    user: Option<String>,
-    handles: [Option<Box<File>>; MAX_HANDLES],
+    pub env: BTreeMap<String, String>,
+    pub dir: String,
+    pub user: Option<String>,
+    pub handles: [Option<Box<File>>; MAX_HANDLES],
 }
 
 impl ProcessData {
@@ -303,7 +303,7 @@ pub fn exit() {
     let proc = &table[pid()];
 
     MAX_PID.fetch_sub(1, Ordering::SeqCst);
-    set_pid(proc.parent_id);
+    set_pid(proc.ppid);
 
     unsafe {
         let (_, flags) = Cr3::read();
@@ -352,24 +352,24 @@ pub unsafe fn free(ptr: *mut u8, layout: Layout) {
 /// Process structure
 #[derive(Clone)]
 pub struct Process {
-    id: usize,
-    parent_id: usize,
-    code_addr: u64,
+    pub pid: usize,
+    pub ppid: usize,
+    pub code_addr: u64,
     stack_addr: u64,
     entry_point_addr: u64,
     page_table_frame: PhysFrame,
     stack_frame: Option<InterruptStackFrameValue>,
     registers: Registers,
-    data: ProcessData,
-    allocator: Arc<LockedHeap>,
+    pub data: ProcessData,
+    pub allocator: Arc<LockedHeap>,
 }
 
 impl Process {
     /// Create a new process
     pub fn new() -> Self {
         Self {
-            id: 0,
-            parent_id: 0,
+            pid: 0,
+            ppid: 0,
             code_addr: 0,
             stack_addr: 0,
             entry_point_addr: 0,
@@ -473,10 +473,10 @@ impl Process {
         let allocator = Arc::new(LockedHeap::empty());
 
         let id = MAX_PID.fetch_add(1, Ordering::SeqCst);
-        let parent_id = parent.id;
+        let parent_id = parent.pid;
         let proc = Process {
-            id,
-            parent_id,
+            pid: id,
+            ppid: parent_id,
             code_addr,
             stack_addr,
             entry_point_addr,
@@ -549,7 +549,7 @@ impl Process {
         //debug!("{:#X}..{:#X}: {} bytes for the heap", heap_addr, heap_addr + heap_size as u64, heap_size);
         //debug!("{:#X}..{:#X}: {} bytes for the stack", self.stack_addr - heap_size as u64, self.stack_addr, heap_size);
 
-        set_pid(self.id); // Change PID
+        set_pid(self.pid); // Change PID
 
         unsafe {
             let (_, flags) = Cr3::read();
